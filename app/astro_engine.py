@@ -43,24 +43,29 @@ class ParashariEngine:
         )
 
     @staticmethod
+    def degree_to_sign_index(degree):
+        return int(degree / 30) % 12
+
+    @staticmethod
     def degree_to_sign(degree):
-        index = int(degree / 30) % 12
-        return SIGNS[index]
+        return SIGNS[int(degree / 30) % 12]
 
     @staticmethod
     def calculate_nakshatra(moon_degree):
-        index = int(moon_degree / (360 / 27)) % 27
-        return NAKSHATRAS[index]
+        return NAKSHATRAS[int(moon_degree / (360 / 27)) % 27]
+
+    @staticmethod
+    def map_planet_to_house(planet_degree, lagna_index):
+        planet_sign_index = int(planet_degree / 30) % 12
+        house_number = (planet_sign_index - lagna_index) % 12 + 1
+        return house_number
 
     @staticmethod
     def generate_chart(dob, time, lat, lon, tz_offset=5.5):
 
-        # Set Lahiri Ayanamsa (Sidereal Mode)
         swe.set_sid_mode(swe.SIDM_LAHIRI)
 
         jd = ParashariEngine.to_julian(dob, time)
-
-        # Convert local time to UTC
         jd -= tz_offset / 24.0
 
         planets = {
@@ -74,7 +79,7 @@ class ParashariEngine:
             "Rahu": swe.MEAN_NODE,
         }
 
-        chart = {}
+        planetary_longitudes = {}
 
         for name, planet_id in planets.items():
             position, _ = swe.calc_ut(
@@ -82,10 +87,9 @@ class ParashariEngine:
                 planet_id,
                 swe.FLG_SWIEPH | swe.FLG_SIDEREAL
             )
-            lon_val = position[0] % 360
-            chart[name] = lon_val
+            planetary_longitudes[name] = position[0] % 360
 
-        # Sidereal Houses (Placidus for now)
+        # Lagna from sidereal houses
         houses, ascmc = swe.houses_ex(
             jd,
             lat,
@@ -95,14 +99,20 @@ class ParashariEngine:
         )
 
         ascendant_degree = ascmc[0] % 360
+        lagna_index = ParashariEngine.degree_to_sign_index(ascendant_degree)
 
-        lagna_sign = ParashariEngine.degree_to_sign(ascendant_degree)
-        moon_sign = ParashariEngine.degree_to_sign(chart["Moon"])
-        nakshatra_name = ParashariEngine.calculate_nakshatra(chart["Moon"])
+        house_mapping = {}
+
+        for planet, degree in planetary_longitudes.items():
+            house_mapping[planet] = ParashariEngine.map_planet_to_house(
+                degree,
+                lagna_index
+            )
 
         return {
-            "lagna": lagna_sign,
-            "moon_sign": moon_sign,
-            "nakshatra": nakshatra_name,
-            "planetary_longitudes": chart
+            "lagna_sign": SIGNS[lagna_index],
+            "moon_sign": ParashariEngine.degree_to_sign(planetary_longitudes["Moon"]),
+            "nakshatra": ParashariEngine.calculate_nakshatra(planetary_longitudes["Moon"]),
+            "planetary_longitudes": planetary_longitudes,
+            "planetary_houses": house_mapping
         }
