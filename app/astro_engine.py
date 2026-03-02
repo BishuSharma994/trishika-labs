@@ -23,7 +23,6 @@ class ParashariEngine:
     def to_julian(dob_str, time_str):
         dt = None
 
-        # Support 24h and 12h formats
         for fmt in ("%d-%m-%Y %H:%M", "%d-%m-%Y %I:%M %p"):
             try:
                 dt = datetime.strptime(f"{dob_str} {time_str}", fmt)
@@ -56,6 +55,9 @@ class ParashariEngine:
     @staticmethod
     def generate_chart(dob, time, lat, lon, tz_offset=5.5):
 
+        # Set Lahiri Ayanamsa (Sidereal Mode)
+        swe.set_sid_mode(swe.SIDM_LAHIRI)
+
         jd = ParashariEngine.to_julian(dob, time)
 
         # Convert local time to UTC
@@ -75,13 +77,24 @@ class ParashariEngine:
         chart = {}
 
         for name, planet_id in planets.items():
-            position, _ = swe.calc_ut(jd, planet_id)
-            lon_val = position[0]  # Extract longitude only
+            position, _ = swe.calc_ut(
+                jd,
+                planet_id,
+                swe.FLG_SWIEPH | swe.FLG_SIDEREAL
+            )
+            lon_val = position[0] % 360
             chart[name] = lon_val
 
-        # House calculation
-        houses, ascmc = swe.houses(jd, lat, lon)
-        ascendant_degree = ascmc[0]
+        # Sidereal Houses (Placidus for now)
+        houses, ascmc = swe.houses_ex(
+            jd,
+            lat,
+            lon,
+            b'P',
+            swe.FLG_SIDEREAL
+        )
+
+        ascendant_degree = ascmc[0] % 360
 
         lagna_sign = ParashariEngine.degree_to_sign(ascendant_degree)
         moon_sign = ParashariEngine.degree_to_sign(chart["Moon"])
