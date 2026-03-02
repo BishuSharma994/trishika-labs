@@ -20,13 +20,24 @@ class ParashariEngine:
 
     @staticmethod
     def to_julian(dob_str, time_str):
-        dt = datetime.strptime(dob_str + " " + time_str, "%d-%m-%Y %H:%M")
-        return swe.julday(
-            dt.year,
-            dt.month,
-            dt.day,
-            dt.hour + dt.minute / 60.0
-        )
+    dt = None
+
+    for fmt in ("%d-%m-%Y %H:%M", "%d-%m-%Y %I:%M %p"):
+        try:
+            dt = datetime.strptime(dob_str + " " + time_str, fmt)
+            break
+        except ValueError:
+            continue
+
+    if dt is None:
+        raise ValueError("Invalid date/time format")
+
+    return swe.julday(
+        dt.year,
+        dt.month,
+        dt.day,
+        dt.hour + dt.minute / 60.0
+    )
 
     @staticmethod
     def degree_to_sign(degree):
