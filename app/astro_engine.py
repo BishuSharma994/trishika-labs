@@ -23,9 +23,10 @@ class ParashariEngine:
     def to_julian(dob_str, time_str):
         dt = None
 
+        # Support 24h and 12h formats
         for fmt in ("%d-%m-%Y %H:%M", "%d-%m-%Y %I:%M %p"):
             try:
-                dt = datetime.strptime(dob_str + " " + time_str, fmt)
+                dt = datetime.strptime(f"{dob_str} {time_str}", fmt)
                 break
             except ValueError:
                 continue
@@ -33,28 +34,31 @@ class ParashariEngine:
         if dt is None:
             raise ValueError("Invalid date/time format")
 
+        decimal_hour = dt.hour + dt.minute / 60.0
+
         return swe.julday(
             dt.year,
             dt.month,
             dt.day,
-            dt.hour + dt.minute / 60.0
+            decimal_hour
         )
 
     @staticmethod
     def degree_to_sign(degree):
-        index = int(degree / 30)
+        index = int(degree / 30) % 12
         return SIGNS[index]
 
     @staticmethod
     def calculate_nakshatra(moon_degree):
-        index = int(moon_degree / (360 / 27))
+        index = int(moon_degree / (360 / 27)) % 27
         return NAKSHATRAS[index]
 
     @staticmethod
     def generate_chart(dob, time, lat, lon, tz_offset=5.5):
+
         jd = ParashariEngine.to_julian(dob, time)
 
-        # Adjust for timezone
+        # Convert local time to UTC
         jd -= tz_offset / 24.0
 
         planets = {
@@ -71,9 +75,11 @@ class ParashariEngine:
         chart = {}
 
         for name, planet_id in planets.items():
-            lon_val, _, _ = swe.calc_ut(jd, planet_id)
+            position, _ = swe.calc_ut(jd, planet_id)
+            lon_val = position[0]  # Extract longitude only
             chart[name] = lon_val
 
+        # House calculation
         houses, ascmc = swe.houses(jd, lat, lon)
         ascendant_degree = ascmc[0]
 
