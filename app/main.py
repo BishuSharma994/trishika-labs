@@ -1,4 +1,3 @@
-from app.prompts import INTERVIEW_SYSTEM
 from fastapi import FastAPI, Request
 import requests
 import os
@@ -24,18 +23,22 @@ def health():
 
 @app.post("/webhook/{bot_token}")
 async def telegram_webhook(bot_token: str, request: Request):
-    data = await request.json()
-    message = data.get("message")
 
+    try:
+        data = await request.json()
+    except Exception:
+        return {"ok": True}
+
+    message = data.get("message")
     if not message:
         return {"ok": True}
 
     chat_id = message["chat"]["id"]
     user_id = str(message["from"]["id"])
-    text = message.get("text", "")
+    text = message.get("text", "").strip()
 
     # ==============================
-    # ASTROLOGY BOT FLOW
+    # ASTROLOGY BOT
     # ==============================
     if bot_token == ASTRO_TOKEN:
 
@@ -54,7 +57,7 @@ async def telegram_webhook(bot_token: str, request: Request):
         elif session.step == "dob":
             session.dob = text
             session.step = "tob"
-            reply = "Enter Time of Birth (HH:MM, 24hr format)"
+            reply = "Enter Time of Birth (HH:MM or H:MM AM/PM)"
 
         elif session.step == "tob":
             session.tob = text
@@ -70,17 +73,22 @@ async def telegram_webhook(bot_token: str, request: Request):
 
             user_query = text
 
-            # 🔹 TEMPORARY: Hardcoded Delhi coordinates
-            # Next step: implement city → lat/lon lookup
+            # TEMP: Hardcoded Delhi coordinates
             lat = 28.6139
             lon = 77.2090
 
-            chart_data = ParashariEngine.generate_chart(
-                session.dob,
-                session.tob,
-                lat,
-                lon
-            )
+            try:
+                chart_data = ParashariEngine.generate_chart(
+                    session.dob,
+                    session.tob,
+                    lat,
+                    lon
+                )
+            except Exception as e:
+                db.close()
+                return {
+                    "ok": True
+                }
 
             astro_data = {
                 "birth_details": {
@@ -88,7 +96,8 @@ async def telegram_webhook(bot_token: str, request: Request):
                     "moon_sign": chart_data["moon_sign"],
                     "nakshatra": chart_data["nakshatra"]
                 },
-                "planetary_positions": chart_data["planetary_longitudes"]
+                "planetary_positions": chart_data["planetary_longitudes"],
+                "planetary_houses": chart_data["planetary_houses"]
             }
 
             full_prompt = AstrologerPrompts.build_qa_prompt(
@@ -107,7 +116,7 @@ async def telegram_webhook(bot_token: str, request: Request):
         db.close()
 
     # ==============================
-    # INTERVIEW BOT FLOW
+    # INTERVIEW BOT
     # ==============================
     elif bot_token == INTERVIEW_TOKEN:
 
@@ -134,6 +143,7 @@ Improved Model Answer:
     else:
         reply = "Invalid bot token."
 
+    # Send reply to Telegram
     requests.post(
         f"https://api.telegram.org/bot{bot_token}/sendMessage",
         json={
