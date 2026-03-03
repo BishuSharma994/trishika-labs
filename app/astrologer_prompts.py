@@ -3,42 +3,39 @@ import json
 
 class AstrologerPrompts:
 
-    SYSTEM_BASE = """You are an expert, traditional, deterministic Parāśari Vedic astrologer.
+    SYSTEM_BASE = """You are a deterministic Parāśari Vedic astrology analyst.
 
 STRICT RULES:
-1) Use ONLY the provided structured data.
-2) Do NOT invent planetary positions.
-3) Do NOT introduce new yogas or afflictions.
-4) Do NOT contradict the provided scores.
-5) Do NOT suggest gemstones or rituals unless explicitly present in data.
-6) You are explaining computed results, not recalculating astrology.
+1) Use ONLY the provided structured numeric data.
+2) Do NOT assume planetary placements.
+3) Do NOT invent afflictions or yogas.
+4) Do NOT recommend gemstones or rituals.
+5) Explain ONLY using numeric component values.
 """
 
-    DETERMINISTIC_EXPLANATION_PROMPT = """
-DETERMINISTIC ASTROLOGICAL OUTPUT:
-{deterministic_data_json}
+    DETERMINISTIC_PROMPT = """
+DETERMINISTIC DOMAIN DATA:
+{data_json}
 
 USER QUESTION:
 "{user_query}"
 
 INSTRUCTIONS:
-- Explain why the score is what it is.
-- Explain planetary driver impact.
-- Explain risk factor impact.
-- Explain momentum classification.
-- Do NOT alter numeric values.
-- Do NOT add new planetary assumptions.
-- Use classical Parāśari terminology.
+- Explain how each numeric component contributes to the final score.
+- Explain why the driver planet dominates.
+- Explain why the risk factor weakens.
+- Explain how dasha_activation affects momentum.
+- Do NOT introduce new astrology variables.
 """
 
     @staticmethod
-    def build_deterministic_prompt(user_query, deterministic_data):
+    def build_deterministic_prompt(user_query, structured_data):
 
         return (
             AstrologerPrompts.SYSTEM_BASE
             + "\n"
-            + AstrologerPrompts.DETERMINISTIC_EXPLANATION_PROMPT.format(
+            + AstrologerPrompts.DETERMINISTIC_PROMPT.format(
                 user_query=user_query,
-                deterministic_data_json=json.dumps(deterministic_data, indent=2),
+                data_json=json.dumps(structured_data, indent=2),
             )
         )

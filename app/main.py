@@ -34,6 +34,8 @@ async def telegram_webhook(bot_token: str, request: Request):
     user_id = str(message["from"]["id"])
     text = message.get("text", "").strip()
 
+    reply = None
+
     # =========================================================
     # ASTROLOGY BOT
     # =========================================================
@@ -83,52 +85,34 @@ async def telegram_webhook(bot_token: str, request: Request):
 
             domains = chart_data.get("domain_scores", {})
 
-            if "career" in user_query:
-                domain_key = "career"
-            elif "marriage" in user_query:
-                domain_key = "marriage"
-            elif "finance" in user_query:
-                domain_key = "finance"
-            elif "health" in user_query:
-                domain_key = "health"
-            else:
-                domain_key = None
-
-            if not domain_key or domain_key not in domains:
+            if user_query not in domains:
                 reply = "Invalid selection. Choose Career, Marriage, Finance, or Health."
             else:
-                deterministic_data = domains[domain_key]
+                deterministic_data = domains[user_query].copy()
+                deterministic_data["domain"] = user_query
 
-                structured_payload = {
-                    "domain": domain_key,
-                    "score": deterministic_data["score"],
-                    "primary_driver": deterministic_data["primary_driver"],
-                    "risk_factor": deterministic_data["risk_factor"],
-                    "momentum": deterministic_data["momentum"]
-                }
-
-                deterministic_header = (
-                    f"{domain_key.capitalize()} Score: {structured_payload['score']}/100\n"
-                    f"Primary Driver: {structured_payload['primary_driver']}\n"
-                    f"Risk Factor: {structured_payload['risk_factor']}\n"
-                    f"Momentum: {structured_payload['momentum']}\n\n"
+                header = (
+                    f"{user_query.capitalize()} Score: {deterministic_data['score']}/100\n"
+                    f"Primary Driver: {deterministic_data['primary_driver']}\n"
+                    f"Risk Factor: {deterministic_data['risk_factor']}\n"
+                    f"Momentum: {deterministic_data['momentum']}\n\n"
                 )
 
                 ai_prompt = AstrologerPrompts.build_deterministic_prompt(
                     user_query,
-                    structured_payload
+                    deterministic_data
                 )
 
                 try:
                     ai_response = ask_ai("", ai_prompt)
 
-                    if ai_response and len(ai_response.strip()) > 5:
-                        reply = deterministic_header + ai_response
+                    if ai_response and isinstance(ai_response, str) and len(ai_response.strip()) > 5:
+                        reply = header + ai_response
                     else:
-                        reply = deterministic_header
+                        reply = header
 
                 except Exception:
-                    reply = deterministic_header
+                    reply = header
 
             session.step = "start"
 
@@ -174,7 +158,7 @@ Improved Model Answer:
         reply = "Invalid bot token."
 
     # =========================================================
-    # TELEGRAM RESPONSE SAFETY
+    # TELEGRAM SAFETY CHECK
     # =========================================================
     if not reply or not isinstance(reply, str):
         reply = "System error. Please try again."
