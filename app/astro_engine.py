@@ -18,6 +18,7 @@ from app.parashari_core.prediction_engine import compute_prediction_score
 from app.parashari_core.event_timing import compute_house_activation
 from app.parashari_core.life_windows import detect_marriage_window, detect_career_window
 from app.parashari_core.deterministic_interpretation import generate_deterministic_summary
+from app.parashari_core.domain_scoring import DomainScorer
 
 
 class ParashariEngine:
@@ -125,6 +126,24 @@ class ParashariEngine:
         })
 
         # =============================
+        # Domain Scoring Layer
+        # =============================
+        scorer = DomainScorer({
+            "shadbala": shadbala_full,
+            "ashtakavarga": ashtakavarga,
+            "bhavesh": bhavesh,
+            "current_dasha": current_dasha,
+            "activated_houses": activated_houses
+        })
+
+        domain_scores = {
+            "finance": scorer.finance(),
+            "marriage": scorer.marriage(),
+            "career": scorer.career(),
+            "health": scorer.health()
+        }
+
+        # =============================
         # Moon Sign
         # =============================
         moon_deg = base["longitudes"]["Moon"]
@@ -138,27 +157,22 @@ class ParashariEngine:
             "moon_sign": moon_sign,
             "planetary_longitudes": base["longitudes"],
             "planetary_houses": houses,
-
             "dignity": dignity,
             "bhavesh": bhavesh,
             "yogas": yogas,
-
             "navamsa": navamsa,
             "d9_strength": d9_strength,
             "d10": d10,
             "d7": d7,
             "d12": d12,
-
             "shadbala": shadbala_full,
             "ashtakavarga": ashtakavarga,
             "transit": transit,
-
             "current_dasha": current_dasha,
             "activated_houses": activated_houses,
-
             "marriage_window_active": marriage_window,
             "career_window_active": career_window,
-
             "prediction_score": prediction_score,
-            "deterministic_summary": deterministic_summary
+            "deterministic_summary": deterministic_summary,
+            "domain_scores": domain_scores
         }
