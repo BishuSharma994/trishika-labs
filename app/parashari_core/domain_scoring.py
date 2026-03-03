@@ -4,7 +4,6 @@ from statistics import mean
 class DomainScorer:
 
     def __init__(self, engine_output: dict):
-
         self.shadbala = engine_output["shadbala"]
         self.ashtakavarga = engine_output["ashtakavarga"]["sarva"]
         self.bhavesh = engine_output["bhavesh"]
@@ -28,14 +27,11 @@ class DomainScorer:
 
     def _dasha_score(self, relevant_houses):
         score = 50
-
         for h in relevant_houses:
             if h in self.activated_houses:
                 score += 20
-
         if any(h in [6, 8, 12] for h in self.activated_houses):
             score -= 15
-
         return min(max(score, 0), 100)
 
     def _planet_contribution(self, planet, relevance):
@@ -46,17 +42,13 @@ class DomainScorer:
     def _select_driver_and_risk(self, contributions):
         if not contributions:
             return "None", "None"
-
         sorted_planets = sorted(contributions.items(), key=lambda x: x[1], reverse=True)
         primary = sorted_planets[0][0]
         risk = sorted_planets[-1][0] if len(sorted_planets) > 1 else "None"
         return primary, risk
 
-    # ---------------- Generic Scoring ----------------
-
     def _build_response(self, final_score, house_struct, lord_score,
-                        ashtakavarga_score, dasha_score,
-                        contributions):
+                        ashtakavarga_score, dasha_score, contributions):
 
         primary, risk = self._select_driver_and_risk(contributions)
 
@@ -79,10 +71,40 @@ class DomainScorer:
             }
         }
 
-    # ---------------- Marriage Example ----------------
+    # ================= FINANCE =================
+
+    def finance(self):
+        houses = [2, 11, 5]
+
+        house_struct = mean([self._house_structural(h) for h in houses])
+
+        relevance = {}
+        for h in houses:
+            lord = self.bhavesh[h]["lord"]
+            relevance[lord] = self._normalize_shadbala(lord)
+
+        house_lord_score = mean(relevance.values())
+        ashtakavarga_score = mean([self._normalize_ashtakavarga(h) for h in houses])
+        dasha_score = self._dasha_score([2, 11, 5, 9])
+
+        final_score = (
+            house_struct * 0.30 +
+            house_lord_score * 0.25 +
+            ashtakavarga_score * 0.15 +
+            dasha_score * 0.20 +
+            50 * 0.10
+        )
+
+        contributions = {p: self._planet_contribution(p, relevance[p]) for p in relevance}
+
+        return self._build_response(
+            final_score, house_struct, house_lord_score,
+            ashtakavarga_score, dasha_score, contributions
+        )
+
+    # ================= MARRIAGE =================
 
     def marriage(self):
-
         houses = [7, 2, 11]
 
         house_struct = mean([self._house_structural(h) for h in houses])
@@ -107,18 +129,81 @@ class DomainScorer:
             50 * 0.10
         )
 
-        contributions = {
-            p: self._planet_contribution(p, relevance[p])
-            for p in relevance
-        }
+        contributions = {p: self._planet_contribution(p, relevance[p]) for p in relevance}
 
         return self._build_response(
-            final_score,
-            house_struct,
-            house_lord_score,
-            ashtakavarga_score,
-            dasha_score,
-            contributions
+            final_score, house_struct, house_lord_score,
+            ashtakavarga_score, dasha_score, contributions
         )
 
-    # Implement finance(), career(), health() identically
+    # ================= CAREER =================
+
+    def career(self):
+        houses = [10, 6]
+
+        house_struct = mean([self._house_structural(h) for h in houses])
+
+        tenth_lord = self.bhavesh[10]["lord"]
+        saturn = "Saturn"
+
+        relevance = {
+            tenth_lord: self._normalize_shadbala(tenth_lord),
+            saturn: self._normalize_shadbala(saturn)
+        }
+
+        house_lord_score = mean(relevance.values())
+        ashtakavarga_score = self._normalize_ashtakavarga(10)
+        dasha_score = self._dasha_score([10, 6, 2, 11])
+
+        final_score = (
+            house_struct * 0.30 +
+            house_lord_score * 0.25 +
+            ashtakavarga_score * 0.15 +
+            dasha_score * 0.20 +
+            50 * 0.10
+        )
+
+        contributions = {p: self._planet_contribution(p, relevance[p]) for p in relevance}
+
+        return self._build_response(
+            final_score, house_struct, house_lord_score,
+            ashtakavarga_score, dasha_score, contributions
+        )
+
+    # ================= HEALTH =================
+
+    def health(self):
+        house_struct = mean([
+            self._house_structural(1),
+            100 - self._house_structural(6),
+            100 - self._house_structural(8)
+        ])
+
+        lagna_lord = self.bhavesh[1]["lord"]
+        sixth_lord = self.bhavesh[6]["lord"]
+        eighth_lord = self.bhavesh[8]["lord"]
+
+        relevance = {
+            lagna_lord: self._normalize_shadbala(lagna_lord),
+            sixth_lord: 100 - self._normalize_shadbala(sixth_lord),
+            eighth_lord: 100 - self._normalize_shadbala(eighth_lord)
+        }
+
+        house_lord_score = mean(relevance.values())
+        ashtakavarga_score = self._normalize_ashtakavarga(1)
+        dasha_score = self._dasha_score([1, 6, 8, 12])
+
+        final_score = (
+            house_struct * 0.30 +
+            house_lord_score * 0.25 +
+            ashtakavarga_score * 0.15 +
+            dasha_score * 0.20 +
+            50 * 0.10
+        )
+
+        contributions = {p: self._planet_contribution(p, relevance[p]) for p in relevance}
+
+        return self._build_response(
+            final_score, house_struct, house_lord_score,
+            ashtakavarga_score, dasha_score, contributions
+        )
