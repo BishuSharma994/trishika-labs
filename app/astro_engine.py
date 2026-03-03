@@ -1,3 +1,4 @@
+from app.parashari_core.ashtakavarga import compute_ashtakavarga
 from datetime import datetime
 from app.parashari_core.natal import compute_natal, sign_index, SIGNS
 from app.parashari_core.houses import compute_houses
@@ -28,6 +29,7 @@ class ParashariEngine:
         transit = compute_transit(base)
         bhavesh = compute_bhavesh(base, houses)
         yogas = detect_yogas(base, houses, bhavesh)
+        ashtakavarga = compute_ashtakavarga(base, houses)
         d9_strength = compute_d9_strength(base, navamsa)
 
         moon_deg = base["longitudes"]["Moon"]
@@ -79,6 +81,7 @@ class ParashariEngine:
             "shadbala": shadbala_simple,
             "shadbala_full": shadbala_full,
             "transit": transit,
+            "ashtakavarga": ashtakavarga,
 
             "current_dasha": {
                 "mahadasha": current_md,
