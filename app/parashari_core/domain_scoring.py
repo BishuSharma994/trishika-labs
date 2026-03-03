@@ -11,7 +11,7 @@ class DomainScorer:
         self.current_dasha = engine_output["current_dasha"]
         self.activated_houses = engine_output["activated_houses"]
 
-    # ---------- Normalization ----------
+    # ---------------- Normalization ----------------
 
     def _normalize_shadbala(self, planet):
         total = self.shadbala.get(planet, {}).get("total", 0)
@@ -43,7 +43,30 @@ class DomainScorer:
         dasha_bonus = 20 if planet in self.current_dasha.values() else 0
         return (shadbala * 0.4) + (relevance * 0.4) + (dasha_bonus * 0.2)
 
-    # ---------- Finance ----------
+    def _select_driver_and_risk(self, contributions: dict):
+        if not contributions:
+            return "None", "None"
+
+        sorted_planets = sorted(
+            contributions.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        primary = sorted_planets[0][0]
+
+        if len(sorted_planets) > 1:
+            risk = sorted_planets[-1][0]
+            if primary == risk:
+                risk = sorted_planets[-1][0]
+        else:
+            risk = "None"
+
+        return primary, risk
+
+    # ======================================================
+    # FINANCE
+    # ======================================================
 
     def finance(self):
 
@@ -73,10 +96,13 @@ class DomainScorer:
             for p in relevance
         }
 
-        primary = max(contributions, key=contributions.get)
-        risk = min(contributions, key=contributions.get)
+        primary, risk = self._select_driver_and_risk(contributions)
 
-        momentum = "Positive" if final_score > 70 else "Neutral" if final_score >= 45 else "Challenging"
+        momentum = (
+            "Positive" if final_score > 70
+            else "Neutral" if final_score >= 45
+            else "Challenging"
+        )
 
         return {
             "score": round(final_score),
@@ -85,7 +111,9 @@ class DomainScorer:
             "momentum": momentum
         }
 
-    # ---------- Marriage ----------
+    # ======================================================
+    # MARRIAGE
+    # ======================================================
 
     def marriage(self):
 
@@ -118,10 +146,13 @@ class DomainScorer:
             for p in relevance
         }
 
-        primary = max(contributions, key=contributions.get)
-        risk = min(contributions, key=contributions.get)
+        primary, risk = self._select_driver_and_risk(contributions)
 
-        momentum = "Positive" if final_score > 70 else "Neutral" if final_score >= 45 else "Challenging"
+        momentum = (
+            "Positive" if final_score > 70
+            else "Neutral" if final_score >= 45
+            else "Challenging"
+        )
 
         return {
             "score": round(final_score),
@@ -130,7 +161,9 @@ class DomainScorer:
             "momentum": momentum
         }
 
-    # ---------- Career ----------
+    # ======================================================
+    # CAREER
+    # ======================================================
 
     def career(self):
 
@@ -163,10 +196,13 @@ class DomainScorer:
             for p in relevance
         }
 
-        primary = max(contributions, key=contributions.get)
-        risk = min(contributions, key=contributions.get)
+        primary, risk = self._select_driver_and_risk(contributions)
 
-        momentum = "Positive" if final_score > 70 else "Neutral" if final_score >= 45 else "Challenging"
+        momentum = (
+            "Positive" if final_score > 70
+            else "Neutral" if final_score >= 45
+            else "Challenging"
+        )
 
         return {
             "score": round(final_score),
@@ -175,7 +211,9 @@ class DomainScorer:
             "momentum": momentum
         }
 
-    # ---------- Health ----------
+    # ======================================================
+    # HEALTH
+    # ======================================================
 
     def health(self):
 
@@ -212,10 +250,13 @@ class DomainScorer:
             for p in relevance
         }
 
-        primary = max(contributions, key=contributions.get)
-        risk = min(contributions, key=contributions.get)
+        primary, risk = self._select_driver_and_risk(contributions)
 
-        momentum = "Stable" if final_score > 75 else "Watchful" if final_score >= 50 else "Vulnerable"
+        momentum = (
+            "Stable" if final_score > 75
+            else "Watchful" if final_score >= 50
+            else "Vulnerable"
+        )
 
         return {
             "score": round(final_score),
