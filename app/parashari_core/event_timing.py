@@ -1,34 +1,21 @@
-def detect_marriage_window(activated_houses, yogas):
+def compute_house_activation(current_dasha, houses, bhavesh):
 
-    score = 0
+    activated_houses = set()
 
-    if 7 in activated_houses:
-        score += 3
-    if 5 in activated_houses:
-        score += 2
-    if 2 in activated_houses:
-        score += 1
+    md = current_dasha.get("mahadasha")
+    ad = current_dasha.get("antardasha")
+    pd = current_dasha.get("pratyantardasha")
 
-    for yoga in yogas:
-        if "Marriage" in yoga or "Venus" in yoga:
-            score += 2
+    for planet in [md, ad, pd]:
 
-    return score >= 5
+        if not planet:
+            continue
 
+        if planet in houses:
+            activated_houses.add(houses[planet])
 
-def detect_career_window(activated_houses, yogas):
+        for house, data in bhavesh.items():
+            if data["lord"] == planet:
+                activated_houses.add(int(house))
 
-    score = 0
-
-    if 10 in activated_houses:
-        score += 3
-    if 6 in activated_houses:
-        score += 2
-    if 11 in activated_houses:
-        score += 1
-
-    for yoga in yogas:
-        if "Raja" in yoga or "Dhana" in yoga:
-            score += 2
-
-    return score >= 5
+    return sorted(list(activated_houses))
