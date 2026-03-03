@@ -23,7 +23,7 @@ class ParashariEngine:
         dignity = compute_dignity(base)
         aspects = compute_aspects(houses)
         shadbala_simple = compute_shadbala(base, houses, dignity)
-        shadbala_full = compute_full_shadbala(base, houses, dignity)
+        shadbala_full = compute_full_shadbala(base, houses, dignity, aspects)
         full_dasha = compute_dasha(base)
         transit = compute_transit(base)
         bhavesh = compute_bhavesh(base, houses)
