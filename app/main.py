@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 from app.ai import ask_ai
 from app.database import SessionLocal, Session
-from app.astrologer_prompts import AstrologerPrompts
 from app.astro_engine import ParashariEngine
+from app.astrologer_prompts import AstrologerPrompts
 
 load_dotenv()
 
@@ -18,7 +18,7 @@ INTERVIEW_TOKEN = os.getenv("INTERVIEW_TOKEN")
 
 @app.get("/")
 def health():
-    return {"status": "Trishika Labs running (Swiss + Modular Engine)"}
+    return {"status": "Trishika Labs running (Deterministic + LLM Layer)"}
 
 
 @app.post("/webhook/{bot_token}")
@@ -32,7 +32,7 @@ async def telegram_webhook(bot_token: str, request: Request):
 
     chat_id = message["chat"]["id"]
     user_id = str(message["from"]["id"])
-    text = message.get("text", "")
+    text = message.get("text", "").strip()
 
     # =========================================================
     # ASTROLOGY BOT
@@ -99,40 +99,36 @@ async def telegram_webhook(bot_token: str, request: Request):
             else:
                 deterministic_data = domains[domain_key]
 
-                deterministic_summary = (
-                    f"{domain_key.capitalize()} Score: {deterministic_data['score']}/100\n"
-                    f"Primary Driver: {deterministic_data['primary_driver']}\n"
-                    f"Risk Factor: {deterministic_data['risk_factor']}\n"
-                    f"Momentum: {deterministic_data['momentum']}\n\n"
+                structured_payload = {
+                    "domain": domain_key,
+                    "score": deterministic_data["score"],
+                    "primary_driver": deterministic_data["primary_driver"],
+                    "risk_factor": deterministic_data["risk_factor"],
+                    "momentum": deterministic_data["momentum"]
+                }
+
+                deterministic_header = (
+                    f"{domain_key.capitalize()} Score: {structured_payload['score']}/100\n"
+                    f"Primary Driver: {structured_payload['primary_driver']}\n"
+                    f"Risk Factor: {structured_payload['risk_factor']}\n"
+                    f"Momentum: {structured_payload['momentum']}\n\n"
                 )
 
-                ai_prompt = f"""
-You are a classical Vedic astrologer.
-
-Use the following deterministic astrological data strictly:
-
-{deterministic_summary}
-
-Explain:
-- Why this score is formed
-- Which planetary dynamics are active
-- What the current dasha impact means
-- Practical advice aligned with the score
-
-Do NOT change the numbers.
-Do NOT contradict the deterministic score.
-"""
+                ai_prompt = AstrologerPrompts.build_deterministic_prompt(
+                    user_query,
+                    structured_payload
+                )
 
                 try:
                     ai_response = ask_ai("", ai_prompt)
 
                     if ai_response and len(ai_response.strip()) > 5:
-                        reply = deterministic_summary + ai_response
+                        reply = deterministic_header + ai_response
                     else:
-                        reply = deterministic_summary
+                        reply = deterministic_header
 
                 except Exception:
-                    reply = deterministic_summary
+                    reply = deterministic_header
 
             session.step = "start"
 
@@ -178,7 +174,7 @@ Improved Model Answer:
         reply = "Invalid bot token."
 
     # =========================================================
-    # TELEGRAM RESPONSE
+    # TELEGRAM RESPONSE SAFETY
     # =========================================================
     if not reply or not isinstance(reply, str):
         reply = "System error. Please try again."
