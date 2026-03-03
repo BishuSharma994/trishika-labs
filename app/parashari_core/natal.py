@@ -61,4 +61,5 @@ def compute_natal(dob, time, lat, lon, tz_offset=5.5):
         "longitudes":longitudes,
         "lagna_index":lagna_idx,
         "lagna_sign":SIGNS[lagna_idx]
+        "birth_datetime": birth_dt
     }
