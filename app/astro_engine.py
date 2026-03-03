@@ -1,13 +1,16 @@
-from app.parashari_core.natal import compute_natal
+from datetime import datetime
+from app.parashari_core.natal import compute_natal, sign_index, SIGNS
 from app.parashari_core.houses import compute_houses
-from app.parashari_core.navamsa import compute_navamsa
+from app.parashari_core.navamsa import compute_navamsa, compute_d9_strength
 from app.parashari_core.dignity import compute_dignity
 from app.parashari_core.aspects import compute_aspects
 from app.parashari_core.shadbala import compute_shadbala
+from app.parashari_core.shadbala_full import compute_full_shadbala
 from app.parashari_core.dasha import compute_dasha
 from app.parashari_core.transit import compute_transit
-from app.parashari_core.natal import sign_index, SIGNS
-from datetime import datetime
+from app.parashari_core.bhavesh import compute_bhavesh
+from app.parashari_core.yogas import detect_yogas
+
 
 class ParashariEngine:
 
@@ -19,11 +22,14 @@ class ParashariEngine:
         navamsa = compute_navamsa(base)
         dignity = compute_dignity(base)
         aspects = compute_aspects(houses)
-        shadbala = compute_shadbala(base, houses, dignity)
+        shadbala_simple = compute_shadbala(base, houses, dignity)
+        shadbala_full = compute_full_shadbala(base, houses, dignity)
         full_dasha = compute_dasha(base)
         transit = compute_transit(base)
+        bhavesh = compute_bhavesh(base, houses)
+        yogas = detect_yogas(base, houses, bhavesh)
+        d9_strength = compute_d9_strength(base, navamsa)
 
-        # ---- Moon Sign ----
         moon_deg = base["longitudes"]["Moon"]
         moon_sign = SIGNS[sign_index(moon_deg)]
 
@@ -39,7 +45,6 @@ class ParashariEngine:
         nak_index = int(moon_deg / (360 / 27))
         nakshatra = NAKSHATRAS[nak_index]
 
-        # ---- Extract Current Dasha ----
         today = datetime.utcnow().date()
 
         current_md = None
@@ -60,25 +65,24 @@ class ParashariEngine:
                 break
 
         return {
-            # Required legacy keys
             "lagna": base["lagna_sign"],
             "moon_sign": moon_sign,
             "nakshatra": nakshatra,
             "planetary_longitudes": base["longitudes"],
             "planetary_houses": houses,
 
-            # Deterministic engine data
-            "houses": houses,
+            "bhavesh": bhavesh,
+            "yogas": yogas,
             "navamsa": navamsa,
+            "d9_strength": d9_strength,
             "dignity": dignity,
-            "shadbala": shadbala,
+            "shadbala": shadbala_simple,
+            "shadbala_full": shadbala_full,
             "transit": transit,
 
-            # Current Dasha focus
             "current_dasha": {
                 "mahadasha": current_md,
                 "antardasha": current_ad,
                 "pratyantardasha": current_pd
             }
         }
-
