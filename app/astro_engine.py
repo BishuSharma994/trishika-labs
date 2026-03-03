@@ -8,6 +8,7 @@ from app.parashari_core.dasha import compute_dasha
 from app.parashari_core.transit import compute_transit
 from app.parashari_core.natal import sign_index, SIGNS
 
+
 class ParashariEngine:
 
     @staticmethod
@@ -22,11 +23,11 @@ class ParashariEngine:
         dasha = compute_dasha(base)
         transit = compute_transit(base)
 
-        # ---- Backward compatibility ----
-
+        # ---- Moon Sign ----
         moon_deg = base["longitudes"]["Moon"]
         moon_sign = SIGNS[sign_index(moon_deg)]
 
+        # ---- Nakshatra ----
         NAKSHATRAS = [
             "Ashwini","Bharani","Krittika","Rohini","Mrigashira",
             "Ardra","Punarvasu","Pushya","Ashlesha","Magha",
@@ -39,14 +40,16 @@ class ParashariEngine:
         nak_index = int(moon_deg / (360 / 27))
         nakshatra = NAKSHATRAS[nak_index]
 
+        # ---- FULL backward compatible response ----
         return {
             # Required by existing webhook
             "lagna": base["lagna_sign"],
             "moon_sign": moon_sign,
             "nakshatra": nakshatra,
             "planetary_longitudes": base["longitudes"],
+            "planetary_houses": houses,
 
-            # Modular engine outputs
+            # Modular expansion data
             "houses": houses,
             "navamsa": navamsa,
             "dignity": dignity,
