@@ -7,7 +7,7 @@ from app.parashari_core.shadbala import compute_shadbala
 from app.parashari_core.dasha import compute_dasha
 from app.parashari_core.transit import compute_transit
 from app.parashari_core.natal import sign_index, SIGNS
-
+from datetime import datetime
 
 class ParashariEngine:
 
@@ -20,14 +20,13 @@ class ParashariEngine:
         dignity = compute_dignity(base)
         aspects = compute_aspects(houses)
         shadbala = compute_shadbala(base, houses, dignity)
-        dasha = compute_dasha(base)
+        full_dasha = compute_dasha(base)
         transit = compute_transit(base)
 
         # ---- Moon Sign ----
         moon_deg = base["longitudes"]["Moon"]
         moon_sign = SIGNS[sign_index(moon_deg)]
 
-        # ---- Nakshatra ----
         NAKSHATRAS = [
             "Ashwini","Bharani","Krittika","Rohini","Mrigashira",
             "Ardra","Punarvasu","Pushya","Ashlesha","Magha",
@@ -40,21 +39,46 @@ class ParashariEngine:
         nak_index = int(moon_deg / (360 / 27))
         nakshatra = NAKSHATRAS[nak_index]
 
-        # ---- FULL backward compatible response ----
+        # ---- Extract Current Dasha ----
+        today = datetime.utcnow().date()
+
+        current_md = None
+        current_ad = None
+        current_pd = None
+
+        for md in full_dasha:
+            if md["start"] <= str(today) <= md["end"]:
+                current_md = md["mahadasha"]
+                for ad in md["antardashas"]:
+                    if ad["start"] <= str(today) <= ad["end"]:
+                        current_ad = ad["antardasha"]
+                        for pd in ad["pratyantardashas"]:
+                            if pd["start"] <= str(today) <= pd["end"]:
+                                current_pd = pd["pratyantardasha"]
+                                break
+                        break
+                break
+
         return {
-            # Required by existing webhook
+            # Required legacy keys
             "lagna": base["lagna_sign"],
             "moon_sign": moon_sign,
             "nakshatra": nakshatra,
             "planetary_longitudes": base["longitudes"],
             "planetary_houses": houses,
 
-            # Modular expansion data
+            # Deterministic engine data
             "houses": houses,
             "navamsa": navamsa,
             "dignity": dignity,
-            "aspects": aspects,
             "shadbala": shadbala,
-            "dasha": dasha,
-            "transit": transit
+            "transit": transit,
+
+            # Current Dasha focus
+            "current_dasha": {
+                "mahadasha": current_md,
+                "antardasha": current_ad,
+                "pratyantardasha": current_pd
+            }
         }
+

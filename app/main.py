@@ -90,15 +90,7 @@ async def telegram_webhook(bot_token: str, request: Request):
                     "ok": True
                 }
 
-            astro_data = {
-                "birth_details": {
-                    "lagna": chart_data["lagna"],
-                    "moon_sign": chart_data["moon_sign"],
-                    "nakshatra": chart_data["nakshatra"]
-                },
-                "planetary_positions": chart_data["planetary_longitudes"],
-                "planetary_houses": chart_data["planetary_houses"]
-            }
+             astro_data = chart_data
 
             full_prompt = AstrologerPrompts.build_qa_prompt(
                 user_query,

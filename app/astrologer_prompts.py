@@ -15,27 +15,25 @@ STRICT RULES:
 7. No speculative language.
 """
 
-    QA_PROMPT = """
-ASTRO DATA (Structured JSON):
+
+QA_PROMPT = """
+USER PROFILE & ASTROLOGICAL DATA:
 {astro_data_json}
 
 USER QUESTION:
 "{user_query}"
 
-RESPONSE FORMAT (STRICT):
-
-Lagna:
-Moon Sign:
-Nakshatra:
-
-Planetary Houses:
-(List each planet with its house number.)
-
-Analysis:
-(Use ONLY provided house + sign placements. No Dasha. No Transit unless present.)
-
-Conclusion:
-(Short deterministic summary.)
+INSTRUCTIONS:
+- Base interpretation STRICTLY on:
+  1) Lagna
+  2) Current Mahadasha
+  3) Current Antardasha
+  4) Transit influence
+  5) Planetary dignity and strength
+- Mention dasha planet explicitly.
+- Mention transit impact explicitly.
+- Provide one traditional Parāśari remedy.
+- Keep answer concise (2-3 Telegram paragraphs).
 """
 
     @staticmethod
