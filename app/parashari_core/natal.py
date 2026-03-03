@@ -105,5 +105,6 @@ def compute_natal(dob: str, time: str, latitude: float, longitude: float):
         "lagna_index": lagna_idx,
         "lagna_degree": asc_degree,
         "longitudes": longitudes,
-        "birth_datetime": birth_dt
+        "birth_datetime": birth_dt,
+        "jd": jd
     }
