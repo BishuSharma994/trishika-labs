@@ -22,12 +22,11 @@ class ParashariEngine:
         dasha = compute_dasha(base)
         transit = compute_transit(base)
 
-        # ---- Backward compatibility layer ----
+        # ---- Backward compatibility ----
 
         moon_deg = base["longitudes"]["Moon"]
         moon_sign = SIGNS[sign_index(moon_deg)]
 
-        nak_index = int(moon_deg / (360 / 27))
         NAKSHATRAS = [
             "Ashwini","Bharani","Krittika","Rohini","Mrigashira",
             "Ardra","Punarvasu","Pushya","Ashlesha","Magha",
@@ -37,16 +36,17 @@ class ParashariEngine:
             "Purva Bhadrapada","Uttara Bhadrapada","Revati"
         ]
 
+        nak_index = int(moon_deg / (360 / 27))
         nakshatra = NAKSHATRAS[nak_index]
 
         return {
-            # ---- Old keys your webhook expects ----
+            # Required by existing webhook
             "lagna": base["lagna_sign"],
             "moon_sign": moon_sign,
             "nakshatra": nakshatra,
             "planetary_longitudes": base["longitudes"],
 
-            # ---- New modular data ----
+            # Modular engine outputs
             "houses": houses,
             "navamsa": navamsa,
             "dignity": dignity,
