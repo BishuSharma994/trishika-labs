@@ -91,15 +91,18 @@ def compute_natal(dob: str, time: str, latitude: float, longitude: float):
     longitudes["Ketu"] = (longitudes["Rahu"] + 180) % 360
 
     # ---------------------------------------------------------
-    # CORRECT Swiss houses call
+    # Correct Swiss houses usage
     # ---------------------------------------------------------
 
     house_cusps, ascmc = swe.houses(jd, latitude, longitude)
 
-    asc_degree = ascmc[0]   # Ascendant
-    lagna_sign = SIGNS[sign_index(asc_degree)]
+    asc_degree = ascmc[0]
+    lagna_idx = sign_index(asc_degree)
+    lagna_sign = SIGNS[lagna_idx]
 
     return {
         "lagna_sign": lagna_sign,
+        "lagna_index": lagna_idx,
+        "lagna_degree": asc_degree,
         "longitudes": longitudes
     }
