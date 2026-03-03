@@ -67,6 +67,8 @@ class ParashariEngine:
         jd = ParashariEngine.to_julian(dob, time)
         jd -= tz_offset / 24.0
 
+        planetary_longitudes = {}
+
         planets = {
             "Sun": swe.SUN,
             "Moon": swe.MOON,
@@ -75,10 +77,8 @@ class ParashariEngine:
             "Jupiter": swe.JUPITER,
             "Venus": swe.VENUS,
             "Saturn": swe.SATURN,
-            "Rahu": swe.MEAN_NODE,
+            "Rahu": swe.TRUE_NODE,  # TRUE NODE
         }
-
-        planetary_longitudes = {}
 
         for name, planet_id in planets.items():
             position, _ = swe.calc_ut(
@@ -88,6 +88,12 @@ class ParashariEngine:
             )
             planetary_longitudes[name] = position[0] % 360
 
+        # Compute Ketu as exact opposition
+        planetary_longitudes["Ketu"] = (
+            planetary_longitudes["Rahu"] + 180
+        ) % 360
+
+        # Ascendant (sidereal)
         houses, ascmc = swe.houses_ex(
             jd,
             lat,
@@ -108,7 +114,7 @@ class ParashariEngine:
             )
 
         return {
-            "lagna": SIGNS[lagna_index],  # ← REQUIRED KEY
+            "lagna": SIGNS[lagna_index],
             "moon_sign": ParashariEngine.degree_to_sign(
                 planetary_longitudes["Moon"]
             ),
