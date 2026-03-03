@@ -18,12 +18,21 @@ from app.parashari_core.life_windows import detect_marriage_window, detect_caree
 from app.parashari_core.deterministic_interpretation import generate_deterministic_summary
 from app.parashari_core.domain_scoring import DomainScorer
 
+# === NEW ENGINES ===
+from app.parashari_core.time_projection import project_domain_over_time, compute_volatility
+from app.parashari_core.dominance import compute_planet_dominance
+from app.parashari_core.correlation import apply_dynamic_correlation
+
 
 class ParashariEngine:
 
     @staticmethod
     @lru_cache(maxsize=256)
     def generate_chart(dob, time, lat, lon):
+
+        # =========================================================
+        # BASE COMPUTATION
+        # =========================================================
 
         base = compute_natal(dob, time, lat, lon)
         houses = compute_houses(base)
@@ -43,6 +52,10 @@ class ParashariEngine:
         d10 = compute_d10(base)
         d7 = compute_d7(base)
         d12 = compute_d12(base)
+
+        # =========================================================
+        # CURRENT DASHA
+        # =========================================================
 
         today = datetime.utcnow().date()
 
@@ -66,6 +79,10 @@ class ParashariEngine:
             "antardasha": current_ad,
             "pratyantardasha": current_pd
         }
+
+        # =========================================================
+        # ACTIVATION ENGINE
+        # =========================================================
 
         activated_houses = compute_house_activation(
             current_dasha,
@@ -101,26 +118,38 @@ class ParashariEngine:
         }
 
         # =========================================================
-        # B) INTER-DOMAIN CORRELATION
+        # DYNAMIC CORRELATION MATRIX (Replaces Linear Blending)
         # =========================================================
 
-        domain_scores["finance"]["score"] = round(
-            (domain_scores["finance"]["score"] * 0.85) +
-            (domain_scores["career"]["score"] * 0.15)
-        )
+        domain_scores = apply_dynamic_correlation(domain_scores)
 
-        domain_scores["marriage"]["score"] = round(
-            (domain_scores["marriage"]["score"] * 0.90) +
-            (domain_scores["health"]["score"] * 0.10)
-        )
+        # =========================================================
+        # PROJECTION + VOLATILITY
+        # =========================================================
 
-        domain_scores["health"]["score"] = round(
-            (domain_scores["health"]["score"] * 0.90) +
-            (domain_scores["marriage"]["score"] * 0.10)
-        )
+        for domain in domain_scores:
+            projections = project_domain_over_time(domain_scores[domain], 12)
+            volatility = compute_volatility(projections)
+
+            domain_scores[domain]["projection_12m"] = projections
+            domain_scores[domain]["volatility"] = volatility
+
+        # =========================================================
+        # PLANET DOMINANCE
+        # =========================================================
+
+        dominance = compute_planet_dominance(domain_scores)
+
+        # =========================================================
+        # MOON SIGN
+        # =========================================================
 
         moon_deg = base["longitudes"]["Moon"]
         moon_sign = SIGNS[sign_index(moon_deg)]
+
+        # =========================================================
+        # FINAL RETURN
+        # =========================================================
 
         return {
             "lagna": base["lagna_sign"],
@@ -143,5 +172,6 @@ class ParashariEngine:
             "marriage_window_active": marriage_window,
             "career_window_active": career_window,
             "deterministic_summary": deterministic_summary,
-            "domain_scores": domain_scores
+            "domain_scores": domain_scores,
+            "dominance": dominance
         }
