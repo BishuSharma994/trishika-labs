@@ -20,16 +20,14 @@ USER QUESTION:
 "{user_query}"
 
 INSTRUCTIONS:
-- Base analysis strictly on:
-  1) Lagna
-  2) Current Mahadasha
-  3) Current Antardasha
-  4) Transit influence
-  5) Planetary dignity and strength
-- Mention active dasha planets explicitly.
-- Mention transit influence explicitly.
-- Provide one classical Parāśari remedy.
-- Keep answer concise (2–3 paragraphs).
+- Primary determinant: Mahadasha lord.
+- Secondary: Antardasha lord.
+- Tertiary: Pratyantardasha lord.
+- Then evaluate natal placement of these planets.
+- Then apply transit of these same planets.
+- Lagna provides structural context only.
+- Do not equalize all factors.
+- Weight analysis in descending hierarchy.
 """
 
     @staticmethod
