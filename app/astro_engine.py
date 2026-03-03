@@ -15,6 +15,9 @@ from app.parashari_core.ashtakavarga import compute_ashtakavarga
 from app.parashari_core.vargas import compute_d10, compute_d7, compute_d12
 from app.parashari_core.gochar_score import compute_gochar_score
 from app.parashari_core.prediction_engine import compute_prediction_score
+from app.parashari_core.event_timing import compute_house_activation
+from app.parashari_core.life_windows import detect_marriage_window, detect_career_window
+from app.parashari_core.deterministic_interpretation import generate_deterministic_summary
 
 
 class ParashariEngine:
@@ -22,6 +25,9 @@ class ParashariEngine:
     @staticmethod
     def generate_chart(dob, time, lat, lon):
 
+        # =============================
+        # Base Natal Computation
+        # =============================
         base = compute_natal(dob, time, lat, lon)
 
         houses = compute_houses(base)
@@ -29,24 +35,38 @@ class ParashariEngine:
         dignity = compute_dignity(base)
         aspects = compute_aspects(houses)
 
+        # =============================
+        # Strength Systems
+        # =============================
         shadbala_simple = compute_shadbala(base, houses, dignity)
         shadbala_full = compute_full_shadbala(base, houses, dignity, aspects)
 
+        # =============================
+        # Dasha & Transit
+        # =============================
         full_dasha = compute_dasha(base)
         transit = compute_transit(base)
 
+        # =============================
+        # Structural Analysis
+        # =============================
         bhavesh = compute_bhavesh(base, houses)
         yogas = detect_yogas(base, houses, bhavesh)
-
         ashtakavarga = compute_ashtakavarga(base, houses)
 
+        # =============================
+        # Vargas
+        # =============================
+        d9_strength = compute_d9_strength(base, navamsa)
         d10 = compute_d10(base)
         d7 = compute_d7(base)
         d12 = compute_d12(base)
 
-        d9_strength = compute_d9_strength(base, navamsa)
-
+        # =============================
+        # Current Dasha Detection
+        # =============================
         today = datetime.utcnow().date()
+
         current_md = None
         current_ad = None
         current_pd = None
@@ -54,9 +74,11 @@ class ParashariEngine:
         for md in full_dasha:
             if md["start"] <= str(today) <= md["end"]:
                 current_md = md["mahadasha"]
+
                 for ad in md["antardashas"]:
                     if ad["start"] <= str(today) <= ad["end"]:
                         current_ad = ad["antardasha"]
+
                         for pd in ad["pratyantardashas"]:
                             if pd["start"] <= str(today) <= pd["end"]:
                                 current_pd = pd["pratyantardasha"]
@@ -64,44 +86,79 @@ class ParashariEngine:
                         break
                 break
 
+        current_dasha = {
+            "mahadasha": current_md,
+            "antardasha": current_ad,
+            "pratyantardasha": current_pd
+        }
+
+        # =============================
+        # Gochar + Prediction Scoring
+        # =============================
         gochar_score = compute_gochar_score(transit, ashtakavarga["sarva"])
 
         prediction_score = compute_prediction_score(
-            {
-                "mahadasha": current_md,
-                "antardasha": current_ad
-            },
+            current_dasha,
             shadbala_full,
             gochar_score,
             yogas
         )
 
+        # =============================
+        # Event Activation Engine
+        # =============================
+        activated_houses = compute_house_activation(
+            current_dasha,
+            houses,
+            bhavesh
+        )
+
+        marriage_window = detect_marriage_window(activated_houses, yogas)
+        career_window = detect_career_window(activated_houses, yogas)
+
+        # =============================
+        # Deterministic Summary Layer
+        # =============================
+        deterministic_summary = generate_deterministic_summary({
+            "shadbala": shadbala_full,
+            "ashtakavarga": ashtakavarga
+        })
+
+        # =============================
+        # Moon Sign
+        # =============================
         moon_deg = base["longitudes"]["Moon"]
         moon_sign = SIGNS[sign_index(moon_deg)]
 
+        # =============================
+        # Final Return
+        # =============================
         return {
             "lagna": base["lagna_sign"],
             "moon_sign": moon_sign,
-            "planetary_houses": houses,
             "planetary_longitudes": base["longitudes"],
+            "planetary_houses": houses,
 
+            "dignity": dignity,
             "bhavesh": bhavesh,
             "yogas": yogas,
+
             "navamsa": navamsa,
             "d9_strength": d9_strength,
             "d10": d10,
             "d7": d7,
             "d12": d12,
-            "dignity": dignity,
+
             "shadbala": shadbala_full,
             "ashtakavarga": ashtakavarga,
             "transit": transit,
 
-            "current_dasha": {
-                "mahadasha": current_md,
-                "antardasha": current_ad,
-                "pratyantardasha": current_pd
-            },
+            "current_dasha": current_dasha,
+            "activated_houses": activated_houses,
 
-            "prediction_score": prediction_score
+            "marriage_window_active": marriage_window,
+            "career_window_active": career_window,
+
+            "prediction_score": prediction_score,
+            "deterministic_summary": deterministic_summary
         }
