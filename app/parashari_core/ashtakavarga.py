@@ -1,8 +1,9 @@
 from .natal import sign_index
 
-# Classical point allocation reference (simplified structure)
-# Each planet gives points to certain houses from itself
-ASHTAKAVARGA_RULES = {
+PLANETS = ["Sun","Moon","Mars","Mercury","Jupiter","Venus","Saturn"]
+
+# Classical reference house offsets (simplified but structured)
+CLASSICAL_RULES = {
     "Sun": [1,2,4,7,8,9,10,11],
     "Moon": [1,3,6,7,10,11],
     "Mars": [1,2,4,7,8,10,11],
@@ -10,32 +11,30 @@ ASHTAKAVARGA_RULES = {
     "Jupiter": [1,2,4,5,7,9,10,11],
     "Venus": [1,2,3,4,5,8,9,10,11],
     "Saturn": [1,2,3,4,7,8,10,11],
-    "Rahu": [1,2,4,7,8,10,11],
-    "Ketu": [1,2,4,7,8,10,11],
 }
-
 
 def compute_binna_ashtakavarga(base, houses):
 
-    binna = {}
+    matrix = {}
 
-    for planet in houses:
-        binna[planet] = {i: 0 for i in range(1,13)}
+    for planet in PLANETS:
+        matrix[planet] = {i: 0 for i in range(1,13)}
 
-        for relative_house in ASHTAKAVARGA_RULES.get(planet, []):
-            target_house = ((houses[planet] + relative_house - 2) % 12) + 1
-            binna[planet][target_house] += 1
+        for contributor in PLANETS:
+            rel_house = ((houses[contributor] - houses[planet]) % 12) + 1
+            if rel_house in CLASSICAL_RULES.get(planet, []):
+                matrix[planet][houses[contributor]] += 1
 
-    return binna
+    return matrix
 
 
-def compute_sarva_ashtakavarga(binna):
+def compute_sarva_ashtakavarga(matrix):
 
     sarva = {i: 0 for i in range(1,13)}
 
-    for planet in binna:
-        for house in binna[planet]:
-            sarva[house] += binna[planet][house]
+    for planet in matrix:
+        for house, value in matrix[planet].items():
+            sarva[house] += value
 
     return sarva
 
