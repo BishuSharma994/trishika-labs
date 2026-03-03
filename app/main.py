@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 import requests
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 from app.ai import ask_ai
 from app.database import SessionLocal, Session
@@ -76,9 +77,43 @@ async def telegram_webhook(bot_token: str, request: Request):
             lat = 28.6139
             lon = 77.2090
 
+            # =====================================================
+            # INPUT NORMALIZATION (CRITICAL FIX)
+            # =====================================================
+
+            try:
+                # Normalize DOB: DD-MM-YYYY → YYYY-MM-DD
+                dob_obj = datetime.strptime(session.dob, "%d-%m-%Y")
+                dob_normalized = dob_obj.strftime("%Y-%m-%d")
+
+                # Normalize Time
+                try:
+                    time_obj = datetime.strptime(session.tob, "%H:%M")
+                except ValueError:
+                    time_obj = datetime.strptime(session.tob, "%I:%M %p")
+
+                time_normalized = time_obj.strftime("%H:%M")
+
+            except Exception:
+                reply = "Invalid date or time format. Use DD-MM-YYYY and HH:MM."
+                session.step = "start"
+                db.commit()
+                db.close()
+
+                requests.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": reply}
+                )
+
+                return {"ok": True}
+
+            # =====================================================
+            # GENERATE CHART (CACHED SAFE)
+            # =====================================================
+
             chart_data = ParashariEngine.generate_chart(
-                session.dob,
-                session.tob,
+                dob_normalized,
+                time_normalized,
                 lat,
                 lon
             )
