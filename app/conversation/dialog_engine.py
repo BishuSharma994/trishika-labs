@@ -180,6 +180,23 @@ class DialogEngine:
 
         if session.step == "menu":
 
+            text_clean = text.strip().lower()
+
+            quick_selected = (
+                text_clean == "🔮 quick astrology question".lower()
+                or text_clean == "🔮 turant jyotish prashna".lower()
+                or text_clean == "🔮 त्वरित ज्योतिष प्रश्न".lower()
+            )
+
+            full_selected = (
+                text_clean == "📜 full birth chart reading".lower()
+                or text_clean == "📜 poori kundli vishleshan".lower()
+                or text_clean == "📜 पूर्ण कुंडली विश्लेषण".lower()
+            )
+
+            if not quick_selected and not full_selected:
+                return None
+
             StateManager.update_session(user_id, step="birthdata")
 
             if language == "hi" and script == "roman":
@@ -188,7 +205,9 @@ class DialogEngine:
                     "Kripya apni janm jaankari bheje:\n\n"
                     "Janm tareekh\n"
                     "Janm samay\n"
-                    "Janm sthan"
+                    "Janm sthan\n\n"
+                    "Udaharan:\n"
+                    "6 Dec 1994 3:45 AM Delhi"
                 )
 
             if language == "hi" and script == "devanagari":
@@ -197,14 +216,18 @@ class DialogEngine:
                     "कृपया अपनी जन्म जानकारी भेजें:\n\n"
                     "जन्म तिथि\n"
                     "जन्म समय\n"
-                    "जन्म स्थान"
+                    "जन्म स्थान\n\n"
+                    "उदाहरण:\n"
+                    "6 Dec 1994 3:45 AM Delhi"
                 )
 
             return (
                 "Please send your birth details:\n\n"
                 "Date of birth\n"
                 "Time of birth\n"
-                "Birth place"
+                "Birth place\n\n"
+                "Example:\n"
+                "6 Dec 1994 3:45 AM Delhi"
             )
 
 
@@ -225,7 +248,6 @@ class DialogEngine:
 
                 return "Please send complete birth details."
 
-
             StateManager.update_session(
                 user_id,
                 dob=dob,
@@ -233,7 +255,6 @@ class DialogEngine:
                 place=place,
                 step="question"
             )
-
 
             if language == "hi" and script == "roman":
 
