@@ -1,136 +1,137 @@
+import json
+
+
 class PromptBuilder:
 
-    # -----------------------------
-    # SYSTEM ROLE
-    # -----------------------------
-    SYSTEM_PROMPT = """
-You are a traditional Vedic astrologer speaking to a client.
+    SYSTEM_ASTROLOGER = """
+You are a thoughtful Vedic astrologer speaking directly to a client.
 
-Rules:
-1. Never mention calculations or scores.
-2. Interpret signals like a human astrologer.
-3. Speak calmly and conversationally.
-4. Avoid robotic phrasing.
-5. Respond in the user's language.
-6. Give practical guidance where appropriate.
+Behavior rules:
+- Sound natural, calm, and human.
+- Do NOT mention scores, engines, data structures, or JSON.
+- Translate planetary influence into real-life guidance.
+- Avoid excessive technical jargon.
+- If the user writes in Hindi, reply in Hindi.
+- If the user writes in English, reply in English.
+- Be concise but meaningful (4–7 sentences).
 """
 
-    # -----------------------------
+    DOMAIN_TEMPLATE = """
+Client question:
+{question}
+
+Astrology signals for the domain:
+{signals}
+
+Task:
+Explain what these planetary influences mean for the client's life right now.
+Focus on practical implications and decisions.
+"""
+
+    GENERAL_TEMPLATE = """
+Client question:
+{question}
+
+Birth chart summary:
+{chart}
+
+Task:
+Answer like a professional astrologer in a conversational way.
+Give insight rather than technical explanation.
+"""
+
+    FUTURE_TEMPLATE = """
+Client question:
+{question}
+
+Chart context:
+{chart}
+
+Task:
+Provide a short outlook about the near future based on planetary trends.
+Keep it practical and grounded.
+"""
+
+    # --------------------------------------------------
     # DOMAIN PROMPT
-    # -----------------------------
+    # --------------------------------------------------
+
     @staticmethod
     def build_domain_prompt(domain, domain_data, language):
 
-        driver = domain_data.get("primary_driver")
-        risk = domain_data.get("risk_factor")
-        momentum = domain_data.get("momentum")
+        signals = {
+            "domain": domain,
+            "primary_influence": domain_data.get("primary_driver"),
+            "risk_factor": domain_data.get("risk_factor"),
+            "momentum": domain_data.get("momentum")
+        }
+
+        prompt = (
+            PromptBuilder.SYSTEM_ASTROLOGER
+            + "\n"
+            + PromptBuilder.DOMAIN_TEMPLATE.format(
+                question=f"The client is asking about {domain}.",
+                signals=json.dumps(signals, indent=2)
+            )
+        )
 
         if language == "hi":
+            prompt += "\nRespond in Hindi."
 
-            user_context = f"""
-Jeevan ka shetra: {domain}
+        return prompt
 
-Graha prabhav:
-Primary graha: {driver}
-Risk graha: {risk}
-Momentum: {momentum}
+    # --------------------------------------------------
+    # GENERAL CHAT PROMPT
+    # --------------------------------------------------
 
-User ko is shetra ke baare mein samajhna hai.
-Unhe friendly aur practical tareeke se samjhao.
-"""
-
-        else:
-
-            user_context = f"""
-Life domain: {domain}
-
-Planetary influence:
-Primary planet: {driver}
-Risk planet: {risk}
-Momentum: {momentum}
-
-Explain the situation naturally as an astrologer would.
-"""
-
-        return PromptBuilder.SYSTEM_PROMPT + "\n" + user_context
-
-    # -----------------------------
-    # DECISION PROMPT
-    # -----------------------------
     @staticmethod
-    def build_decision_prompt(domain, domain_data, language):
+    def build_general_prompt(chart_data, question, language):
 
-        driver = domain_data.get("primary_driver")
-        momentum = domain_data.get("momentum")
+        summary = {
+            "lagna": chart_data.get("lagna"),
+            "moon_sign": chart_data.get("moon_sign"),
+            "dominant_planet": chart_data.get("deterministic_summary", {}).get("strongest_planet")
+        }
+
+        prompt = (
+            PromptBuilder.SYSTEM_ASTROLOGER
+            + "\n"
+            + PromptBuilder.GENERAL_TEMPLATE.format(
+                question=question,
+                chart=json.dumps(summary, indent=2)
+            )
+        )
 
         if language == "hi":
+            prompt += "\nRespond in Hindi."
 
-            return (
-                PromptBuilder.SYSTEM_PROMPT
-                + f"""
-User {domain} ke sambandh mein decision lena chah raha hai.
+        return prompt
 
-Planet influence:
-{driver}
+    # --------------------------------------------------
+    # FUTURE OUTLOOK PROMPT
+    # --------------------------------------------------
 
-Momentum:
-{momentum}
-
-Unhe samjhao ki kaise decisions aa sakte hain aur kaise sochna chahiye.
-"""
-            )
-
-        else:
-
-            return (
-                PromptBuilder.SYSTEM_PROMPT
-                + f"""
-The user is considering decisions related to {domain}.
-
-Planet influencing this area:
-{driver}
-
-Momentum:
-{momentum}
-
-Explain what kind of decisions may arise and how the user should approach them.
-"""
-            )
-
-    # -----------------------------
-    # FUTURE PROJECTION PROMPT
-    # -----------------------------
     @staticmethod
-    def build_future_prompt(domain, prediction_data, language):
+    def build_future_prompt(chart_data, question, language):
 
-        projection = prediction_data.get("projection_12_months")
+        dasha = chart_data.get("current_dasha", {})
+
+        future_context = {
+            "mahadasha": dasha.get("mahadasha"),
+            "antardasha": dasha.get("antardasha"),
+            "activated_houses": chart_data.get("activated_houses")
+        }
+
+        prompt = (
+            PromptBuilder.SYSTEM_ASTROLOGER
+            + "\n"
+            + PromptBuilder.FUTURE_TEMPLATE.format(
+                question=question,
+                chart=json.dumps(future_context, indent=2)
+            )
+        )
 
         if language == "hi":
+            prompt += "\nRespond in Hindi."
 
-            return (
-                PromptBuilder.SYSTEM_PROMPT
-                + f"""
-User {domain} ka bhavishya jaana chahta hai.
-
-Agle 12 mahino ka trend:
-{projection}
-
-In trends ko astrologer ki tarah explain karo.
-User ko simple bhasha mein samjhao.
-"""
-            )
-
-        else:
-
-            return (
-                PromptBuilder.SYSTEM_PROMPT
-                + f"""
-The user wants to understand the future of their {domain}.
-
-12 month trend:
-{projection}
-
-Explain the upcoming trend like a professional astrologer.
-Avoid technical explanations.
-"""
-            )
+        return prompt
