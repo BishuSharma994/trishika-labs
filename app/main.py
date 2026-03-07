@@ -98,15 +98,17 @@ Improved Answer
         reply_text = "Please try again."
 
     payload = {
-    "chat_id": chat_id,
-    "text": reply_text
-}
+        "chat_id": chat_id,
+        "text": reply_text
+    }
 
-if reply_keyboard:
-    payload["reply_markup"] = reply_keyboard
+    # Telegram keyboard must be JSON encoded
+    if reply_keyboard:
+        payload["reply_markup"] = json.dumps(reply_keyboard)
 
-requests.post(
-    f"https://api.telegram.org/bot{bot_token}/sendMessage",
-    json=payload
-)
+    requests.post(
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        json=payload
+    )
+
     return {"ok": True}
