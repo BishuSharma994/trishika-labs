@@ -6,8 +6,6 @@ from app.conversation.state_manager import StateManager
 from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.intent_router import IntentRouter
-from app.conversation.timing_router import TimingRouter
-from app.conversation.consultation_engine import ConsultationEngine
 from app.utils.birth_data_parser import BirthDataParser
 from app.ai import ask_ai
 
@@ -89,10 +87,8 @@ class DialogEngine:
         lon = 77.2090
 
         if session.chart_data:
-
             try:
                 return json.loads(session.chart_data)
-
             except:
                 pass
 
@@ -118,7 +114,7 @@ class DialogEngine:
 
         MemoryEngine.add_user_message(user_id, text)
 
-        language = session.language
+        language = getattr(session, "language", None)
         script = getattr(session, "script", None)
 
         # START
@@ -137,9 +133,7 @@ class DialogEngine:
 
         if session.step == "language":
 
-            t = text.lower()
-
-            if "english" in t:
+            if text == "English":
 
                 StateManager.update_session(
                     user_id,
@@ -153,8 +147,7 @@ class DialogEngine:
                     "keyboard": MAIN_MENU_EN
                 }
 
-
-            if "हिंदी" in text:
+            if text == "हिंदी":
 
                 StateManager.update_session(
                     user_id,
@@ -168,8 +161,7 @@ class DialogEngine:
                     "keyboard": MAIN_MENU_DEV
                 }
 
-
-            if "roman" in t or "hindi" in t:
+            if text == "Hindi (Roman)":
 
                 StateManager.update_session(
                     user_id,
@@ -184,45 +176,36 @@ class DialogEngine:
                 }
 
 
-        # MENU
+        # MENU SELECTION
 
         if session.step == "menu":
 
-            t = text.lower()
+            StateManager.update_session(user_id, step="birthdata")
 
-            quick = "quick" in t or "turant" in t or "त्वरित" in text
-            full = "chart" in t or "kundli" in t or "कुंडली" in text
-
-            if quick or full:
-
-                StateManager.update_session(user_id, step="birthdata")
-
-                if language == "hi" and script == "devanagari":
-
-                    return (
-                        "कृपया अपनी जन्म जानकारी भेजें:\n"
-                        "जन्म तिथि\n"
-                        "जन्म समय\n"
-                        "जन्म स्थान"
-                    )
-
-
-                if language == "hi" and script == "roman":
-
-                    return (
-                        "Kripya apni janm jaankari bheje:\n"
-                        "Janm tareekh\n"
-                        "Janm samay\n"
-                        "Janm sthan"
-                    )
-
+            if language == "hi" and script == "roman":
 
                 return (
-                    "Please send your birth details:\n"
-                    "Date of birth\n"
-                    "Time of birth\n"
-                    "Birth place"
+                    "Kripya apni janm jaankari bheje:\n\n"
+                    "Janm tareekh\n"
+                    "Janm samay\n"
+                    "Janm sthan"
                 )
+
+            if language == "hi" and script == "devanagari":
+
+                return (
+                    "कृपया अपनी जन्म जानकारी भेजें:\n\n"
+                    "जन्म तिथि\n"
+                    "जन्म समय\n"
+                    "जन्म स्थान"
+                )
+
+            return (
+                "Please send your birth details:\n\n"
+                "Date of birth\n"
+                "Time of birth\n"
+                "Birth place"
+            )
 
 
         # BIRTH DATA
@@ -238,7 +221,6 @@ class DialogEngine:
             if not dob or not tob or not place:
 
                 if language == "hi":
-
                     return "कृपया पूरी जन्म जानकारी भेजें।"
 
                 return "Please send complete birth details."
@@ -253,14 +235,6 @@ class DialogEngine:
             )
 
 
-            if language == "hi" and script == "devanagari":
-
-                return {
-                    "text": "आप किस विषय के बारे में जानना चाहते हैं?",
-                    "keyboard": DOMAIN_MENU_DEV
-                }
-
-
             if language == "hi" and script == "roman":
 
                 return {
@@ -268,6 +242,12 @@ class DialogEngine:
                     "keyboard": DOMAIN_MENU_ROM
                 }
 
+            if language == "hi" and script == "devanagari":
+
+                return {
+                    "text": "आप किस विषय के बारे में जानना चाहते हैं?",
+                    "keyboard": DOMAIN_MENU_DEV
+                }
 
             return {
                 "text": "What area would you like to explore?",
@@ -275,26 +255,13 @@ class DialogEngine:
             }
 
 
-        # DOMAIN
+        # DOMAIN QUESTION
 
         if session.step == "question":
 
             domain = IntentRouter.detect_domain(text)
 
             chart = DialogEngine.load_chart(user_id, session)
-
-            opening = None
-
-            if not getattr(session, "theme_shown", False):
-
-                opening = ConsultationEngine.build_opening(
-                    chart,
-                    language,
-                    script
-                )
-
-                StateManager.update_session(user_id, theme_shown=True)
-
 
             domain_data = chart["domain_scores"].get(domain)
 
@@ -306,15 +273,11 @@ class DialogEngine:
                 text
             )
 
-            ai = ask_ai("", prompt)
+            reply = ask_ai("", prompt)
 
-            if opening:
+            MemoryEngine.add_bot_message(user_id, reply)
 
-                ai = opening + "\n\n" + ai
-
-            MemoryEngine.add_bot_message(user_id, ai)
-
-            return ai
+            return reply
 
 
         return "Type /start to begin."
