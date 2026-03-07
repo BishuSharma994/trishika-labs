@@ -25,15 +25,17 @@ class PlanetTranslator:
     }
 
     @staticmethod
-    def translate(name, language, script):
+    def translate(text, language, script):
+
+        if not text:
+            return text
 
         if language != "hi":
-            return name
+            return text
 
-        if script == "devanagari":
-            return PlanetTranslator.MAP_DEV.get(name, name)
+        mapping = PlanetTranslator.MAP_DEV if script == "devanagari" else PlanetTranslator.MAP_ROM
 
-        if script == "roman":
-            return PlanetTranslator.MAP_ROM.get(name, name)
+        for eng, local in mapping.items():
+            text = text.replace(eng, local)
 
-        return name
+        return text
