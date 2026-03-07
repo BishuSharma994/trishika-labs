@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import requests
 import os
+import json
 from dotenv import load_dotenv
 
 from app.database import SessionLocal, Session
@@ -15,7 +16,7 @@ INTERVIEW_TOKEN = os.getenv("INTERVIEW_TOKEN")
 
 
 # ---------------------------------------------------------
-# HEALTH
+# HEALTH CHECK
 # ---------------------------------------------------------
 
 @app.get("/")
@@ -44,12 +45,13 @@ async def telegram_webhook(bot_token: str, request: Request):
     reply_keyboard = None
 
     # =====================================================
-    # ASTRO BOT
+    # ASTROLOGY BOT
     # =====================================================
 
     if bot_token == ASTRO_TOKEN:
 
         db = SessionLocal()
+
         session = db.query(Session).filter(Session.user_id == user_id).first()
 
         if not session:
@@ -89,8 +91,9 @@ async def telegram_webhook(bot_token: str, request: Request):
         "text": reply_text
     }
 
+    # Telegram requires reply_markup as JSON string
     if reply_keyboard:
-        payload["reply_markup"] = reply_keyboard
+        payload["reply_markup"] = json.dumps(reply_keyboard)
 
     requests.post(
         f"https://api.telegram.org/bot{bot_token}/sendMessage",
