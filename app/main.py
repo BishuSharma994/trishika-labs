@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from app.database import SessionLocal, Session
 from app.conversation.dialog_engine import DialogEngine
+from app.ai import ask_ai
 
 load_dotenv()
 
@@ -76,7 +77,17 @@ async def telegram_webhook(bot_token: str, request: Request):
 
     elif bot_token == INTERVIEW_TOKEN:
 
-        reply_text = "Interview bot active."
+        reply_text = ask_ai(
+            """Evaluate candidate answer.
+
+Score 0-10
+Breakdown
+Strengths
+Weaknesses
+Improved Answer
+""",
+            text
+        )
 
     else:
         reply_text = "Invalid bot token"
@@ -91,7 +102,7 @@ async def telegram_webhook(bot_token: str, request: Request):
         "text": reply_text
     }
 
-    # Telegram requires reply_markup as JSON string
+    # Telegram keyboard must be JSON encoded
     if reply_keyboard:
         payload["reply_markup"] = json.dumps(reply_keyboard)
 
