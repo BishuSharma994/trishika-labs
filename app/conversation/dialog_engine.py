@@ -331,7 +331,14 @@ class DialogEngine:
 
             chart = DialogEngine.load_chart(user_id, session)
 
-            opening = ConsultationEngine.build_opening(chart)
+            if not getattr(session, "theme_shown", False):
+
+                opening = ConsultationEngine.build_opening(chart, language, script)
+
+                StateManager.update_session(user_id, theme_shown=True)
+
+            else:
+                opening = None
 
             domain_data = chart["domain_scores"].get(domain)
 
@@ -353,7 +360,10 @@ class DialogEngine:
 
             ai_reply = ask_ai("", prompt)
 
-            reply = f"{opening}\n\n{ai_reply}"
+            if opening:
+                reply = f"{opening}\n\n{ai_reply}"
+            else:
+                reply = ai_reply
 
             MemoryEngine.add_bot_message(user_id, reply)
 
