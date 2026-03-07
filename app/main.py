@@ -53,6 +53,7 @@ async def telegram_webhook(bot_token: str, request: Request):
 
         db = SessionLocal()
 
+        # Always load fresh session
         session = db.query(Session).filter(Session.user_id == user_id).first()
 
         if not session:
@@ -60,7 +61,17 @@ async def telegram_webhook(bot_token: str, request: Request):
             db.add(session)
             db.commit()
 
+            # reload newly created row
+            session = db.query(Session).filter(Session.user_id == user_id).first()
+
+        # -------------------------------------------------
+        # PROCESS MESSAGE
+        # -------------------------------------------------
+
         result = DialogEngine.process(user_id, text, session)
+
+        # Reload session again to ensure latest updates
+        session = db.query(Session).filter(Session.user_id == user_id).first()
 
         if isinstance(result, dict):
             reply_text = result.get("text")
@@ -102,7 +113,7 @@ Improved Answer
         "text": reply_text
     }
 
-    # Telegram keyboard must be JSON encoded
+    # Telegram keyboards must be JSON encoded
     if reply_keyboard:
         payload["reply_markup"] = json.dumps(reply_keyboard)
 
