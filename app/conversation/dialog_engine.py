@@ -6,6 +6,7 @@ from app.conversation.state_manager import StateManager
 from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.intent_router import IntentRouter
+from app.conversation.timing_router import TimingRouter
 from app.utils.birth_data_parser import BirthDataParser
 from app.ai import ask_ai
 
@@ -195,60 +196,24 @@ class DialogEngine:
                 StateManager.update_session(user_id, step="birthdata")
 
                 if language == "hi" and script == "devanagari":
-                    return (
-                        "आपका प्रश्न देखने के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
-                        "कृपया भेजें:\n"
-                        "जन्म तिथि\n"
-                        "जन्म समय\n"
-                        "जन्म स्थान"
-                    )
+                    return "कृपया अपनी जन्म जानकारी भेजें:\nजन्म तिथि\nजन्म समय\nजन्म स्थान"
 
                 if language == "hi" and script == "roman":
-                    return (
-                        "Aapka prashna dekhne ke liye mujhe aapki birth details chahiye.\n\n"
-                        "Kripya bheje:\n"
-                        "Janm tareekh\n"
-                        "Janm samay\n"
-                        "Janm sthan"
-                    )
+                    return "Kripya apni birth details bheje:\nJanm tareekh\nJanm samay\nJanm sthan"
 
-                return (
-                    "To answer your question I need your birth details.\n\n"
-                    "Please send:\n"
-                    "Date of birth\n"
-                    "Time of birth\n"
-                    "Birth place"
-                )
+                return "Please send your birth details:\nDate of birth\nTime of birth\nBirth place"
 
             if "chart" in t or "kundli" in t or "कुंडली" in text:
 
                 StateManager.update_session(user_id, step="birthdata")
 
                 if language == "hi" and script == "devanagari":
-                    return (
-                        "पूर्ण कुंडली विश्लेषण के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
-                        "कृपया भेजें:\n"
-                        "जन्म तिथि\n"
-                        "जन्म समय\n"
-                        "जन्म स्थान"
-                    )
+                    return "पूर्ण कुंडली पढ़ने के लिए अपनी जन्म जानकारी भेजें।"
 
                 if language == "hi" and script == "roman":
-                    return (
-                        "Poori kundli dekhne ke liye mujhe aapki birth details chahiye.\n\n"
-                        "Kripya bheje:\n"
-                        "Janm tareekh\n"
-                        "Janm samay\n"
-                        "Janm sthan"
-                    )
+                    return "Poori kundli ke liye apni birth details bheje."
 
-                return (
-                    "For a full birth chart reading I need your birth details.\n\n"
-                    "Please send:\n"
-                    "Date of birth\n"
-                    "Time of birth\n"
-                    "Birth place"
-                )
+                return "Send your birth details for full chart reading."
 
         # --------------------------------------------------
         # BIRTH DATA COLLECTION
@@ -265,21 +230,9 @@ class DialogEngine:
             if not dob or not tob or not place:
 
                 if language == "hi":
-                    return (
-                        "मुझे पूरी जन्म जानकारी नहीं मिली।\n\n"
-                        "कृपया भेजें:\n"
-                        "जन्म तिथि\n"
-                        "जन्म समय\n"
-                        "जन्म स्थान"
-                    )
+                    return "कृपया पूरी जन्म जानकारी भेजें।"
 
-                return (
-                    "I could not detect complete birth details.\n\n"
-                    "Please send:\n"
-                    "Date of birth\n"
-                    "Time of birth\n"
-                    "Birth place"
-                )
+                return "Please send complete birth details."
 
             StateManager.update_session(
                 user_id,
@@ -307,7 +260,7 @@ class DialogEngine:
             }
 
         # --------------------------------------------------
-        # DOMAIN ANALYSIS
+        # DOMAIN ANALYSIS + TIMING DETECTION
         # --------------------------------------------------
 
         if session.step == "question":
@@ -330,6 +283,13 @@ class DialogEngine:
             chart = DialogEngine.load_chart(user_id, session)
 
             domain_data = chart["domain_scores"].get(domain)
+
+            is_timing = TimingRouter.is_timing_question(text)
+
+            if is_timing:
+                domain_data["timing_focus"] = True
+            else:
+                domain_data["timing_focus"] = False
 
             prompt = AstrologerPrompts.build_domain_prompt(
                 domain,
