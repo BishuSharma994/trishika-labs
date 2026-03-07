@@ -16,7 +16,21 @@ Rules:
 """
 
     @staticmethod
-    def build_domain_prompt(domain, domain_data, language, user_id, question):
+    def _language_instruction(language, script):
+
+        if language != "hi":
+            return ""
+
+        if script == "devanagari":
+            return "\nRespond in Hindi using Devanagari script."
+
+        if script == "roman":
+            return "\nRespond in Hindi using Roman script (Hinglish)."
+
+        return "\nRespond in Hindi."
+
+    @staticmethod
+    def build_domain_prompt(domain, domain_data, language, script, user_id, question):
 
         context = MemoryEngine.build_context(user_id)
 
@@ -42,13 +56,12 @@ Astrology signals:
 Explain what this means for the user in real life.
 """
 
-        if language == "hi":
-            prompt += "\nRespond in Hindi."
+        prompt += AstrologerPrompts._language_instruction(language, script)
 
         return prompt
 
     @staticmethod
-    def build_general_prompt(chart_data, question, language, user_id):
+    def build_general_prompt(chart_data, question, language, script, user_id):
 
         context = MemoryEngine.build_context(user_id)
 
@@ -73,7 +86,6 @@ Birth chart summary:
 Answer conversationally.
 """
 
-        if language == "hi":
-            prompt += "\nRespond in Hindi."
+        prompt += AstrologerPrompts._language_instruction(language, script)
 
         return prompt
