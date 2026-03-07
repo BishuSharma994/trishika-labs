@@ -76,8 +76,11 @@ class DialogEngine:
 
     @staticmethod
     def normalize_birth_data(session):
+
         dob = datetime.strptime(session.dob, "%Y-%m-%d").strftime("%Y-%m-%d")
+
         return dob, session.tob
+
 
     @staticmethod
     def load_chart(user_id, session):
@@ -86,8 +89,10 @@ class DialogEngine:
         lon = 77.2090
 
         if session.chart_data:
+
             try:
                 return json.loads(session.chart_data)
+
             except:
                 pass
 
@@ -107,6 +112,7 @@ class DialogEngine:
 
         return chart
 
+
     @staticmethod
     def process(user_id, text, session):
 
@@ -115,9 +121,7 @@ class DialogEngine:
         language = session.language
         script = getattr(session, "script", None)
 
-        # --------------------------------------------------
         # START
-        # --------------------------------------------------
 
         if text == "/start":
 
@@ -128,9 +132,8 @@ class DialogEngine:
                 "keyboard": LANGUAGE_MENU
             }
 
-        # --------------------------------------------------
+
         # LANGUAGE SELECTION
-        # --------------------------------------------------
 
         if session.step == "language":
 
@@ -150,6 +153,7 @@ class DialogEngine:
                     "keyboard": MAIN_MENU_EN
                 }
 
+
             if "हिंदी" in text:
 
                 StateManager.update_session(
@@ -163,6 +167,7 @@ class DialogEngine:
                     "text": "नमस्ते।\n\nआप कैसे शुरू करना चाहेंगे?",
                     "keyboard": MAIN_MENU_DEV
                 }
+
 
             if "roman" in t or "hindi" in t:
 
@@ -178,95 +183,49 @@ class DialogEngine:
                     "keyboard": MAIN_MENU_ROM
                 }
 
-            return {
-                "text": "Please choose a language / कृपया भाषा चुनें",
-                "keyboard": LANGUAGE_MENU
-            }
 
-        # --------------------------------------------------
-        # MENU SELECTION
-        # --------------------------------------------------
+        # MENU
 
         if session.step == "menu":
 
             t = text.lower()
 
-            quick_selected = (
-                "quick" in t
-                or "turant" in t
-                or "त्वरित" in text
-            )
+            quick = "quick" in t or "turant" in t or "त्वरित" in text
+            full = "chart" in t or "kundli" in t or "कुंडली" in text
 
-            full_selected = (
-                "chart" in t
-                or "kundli" in t
-                or "कुंडली" in text
-                or "vishleshan" in t
-            )
-
-            if quick_selected:
+            if quick or full:
 
                 StateManager.update_session(user_id, step="birthdata")
 
                 if language == "hi" and script == "devanagari":
+
                     return (
-                        "आपका प्रश्न देखने के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
-                        "कृपया भेजें:\n"
+                        "कृपया अपनी जन्म जानकारी भेजें:\n"
                         "जन्म तिथि\n"
                         "जन्म समय\n"
                         "जन्म स्थान"
                     )
 
+
                 if language == "hi" and script == "roman":
+
                     return (
-                        "Aapka prashna dekhne ke liye mujhe aapki janm jaankari chahiye.\n\n"
-                        "Kripya bheje:\n"
+                        "Kripya apni janm jaankari bheje:\n"
                         "Janm tareekh\n"
                         "Janm samay\n"
                         "Janm sthan"
                     )
 
+
                 return (
-                    "To answer your question I need your birth details.\n\n"
-                    "Please send:\n"
+                    "Please send your birth details:\n"
                     "Date of birth\n"
                     "Time of birth\n"
                     "Birth place"
                 )
 
-            if full_selected:
 
-                StateManager.update_session(user_id, step="birthdata")
-
-                if language == "hi" and script == "devanagari":
-                    return (
-                        "पूर्ण कुंडली विश्लेषण के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
-                        "कृपया भेजें:\n"
-                        "जन्म तिथि\n"
-                        "जन्म समय\n"
-                        "जन्म स्थान"
-                    )
-
-                if language == "hi" and script == "roman":
-                    return (
-                        "Poori kundli vishleshan ke liye mujhe aapki janm jaankari chahiye.\n\n"
-                        "Kripya bheje:\n"
-                        "Janm tareekh\n"
-                        "Janm samay\n"
-                        "Janm sthan"
-                    )
-
-                return (
-                    "For a full birth chart reading I need your birth details.\n\n"
-                    "Please send:\n"
-                    "Date of birth\n"
-                    "Time of birth\n"
-                    "Birth place"
-                )
-
-        # --------------------------------------------------
-        # BIRTH DATA COLLECTION
-        # --------------------------------------------------
+        # BIRTH DATA
 
         if session.step == "birthdata":
 
@@ -279,9 +238,11 @@ class DialogEngine:
             if not dob or not tob or not place:
 
                 if language == "hi":
+
                     return "कृपया पूरी जन्म जानकारी भेजें।"
 
                 return "Please send complete birth details."
+
 
             StateManager.update_session(
                 user_id,
@@ -291,82 +252,69 @@ class DialogEngine:
                 step="question"
             )
 
+
             if language == "hi" and script == "devanagari":
+
                 return {
                     "text": "आप किस विषय के बारे में जानना चाहते हैं?",
                     "keyboard": DOMAIN_MENU_DEV
                 }
 
+
             if language == "hi" and script == "roman":
+
                 return {
                     "text": "Aap kis vishay ke baare mein jaana chahte hain?",
                     "keyboard": DOMAIN_MENU_ROM
                 }
+
 
             return {
                 "text": "What area would you like to explore?",
                 "keyboard": DOMAIN_MENU_EN
             }
 
-        # --------------------------------------------------
-        # DOMAIN ANALYSIS + TIMING DETECTION
-        # --------------------------------------------------
+
+        # DOMAIN
 
         if session.step == "question":
 
             domain = IntentRouter.detect_domain(text)
 
-            if not domain:
-
-                if language == "hi":
-                    return {
-                        "text": "कृपया कोई विषय चुनें या अपना प्रश्न पूछें।",
-                        "keyboard": DOMAIN_MENU_DEV
-                    }
-
-                return {
-                    "text": "Choose a topic or ask your question.",
-                    "keyboard": DOMAIN_MENU_EN
-                }
-
             chart = DialogEngine.load_chart(user_id, session)
+
+            opening = None
 
             if not getattr(session, "theme_shown", False):
 
-                opening = ConsultationEngine.build_opening(chart, language, script)
+                opening = ConsultationEngine.build_opening(
+                    chart,
+                    language,
+                    script
+                )
 
                 StateManager.update_session(user_id, theme_shown=True)
 
-            else:
-                opening = None
 
             domain_data = chart["domain_scores"].get(domain)
-
-            is_timing = TimingRouter.is_timing_question(text)
-
-            if is_timing:
-                domain_data["timing_focus"] = True
-            else:
-                domain_data["timing_focus"] = False
 
             prompt = AstrologerPrompts.build_domain_prompt(
                 domain,
                 domain_data,
                 language,
-                script,
                 user_id,
                 text
             )
 
-            ai_reply = ask_ai("", prompt)
+            ai = ask_ai("", prompt)
 
             if opening:
-                reply = f"{opening}\n\n{ai_reply}"
-            else:
-                reply = ai_reply
 
-            MemoryEngine.add_bot_message(user_id, reply)
+                ai = opening + "\n\n" + ai
 
-            return reply
+            MemoryEngine.add_bot_message(user_id, ai)
+
+            return ai
+
 
         return "Type /start to begin."
