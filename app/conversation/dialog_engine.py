@@ -9,11 +9,18 @@ from app.conversation.memory_engine import MemoryEngine
 from app.ai import ask_ai
 
 
-MAIN_OPTIONS = {
+MAIN_MENU = {
+    "keyboard": [
+        ["🔮 Quick Astrology Question"],
+        ["📜 Full Birth Chart Reading"]
+    ],
+    "resize_keyboard": True
+}
+
+DOMAIN_MENU = {
     "keyboard": [
         ["Career", "Finance"],
-        ["Marriage", "Health"],
-        ["Future outlook"]
+        ["Marriage", "Health"]
     ],
     "resize_keyboard": True
 }
@@ -46,7 +53,7 @@ class DialogEngine:
         if "finance" in t or "money" in t:
             return "finance"
 
-        if "marriage" in t or "relationship" in t or "shaadi" in t:
+        if "marriage" in t or "relationship" in t:
             return "marriage"
 
         if "health" in t:
@@ -76,9 +83,8 @@ class DialogEngine:
     def normalize_birth_data(session):
 
         dob = datetime.strptime(session.dob, "%d-%m-%Y").strftime("%Y-%m-%d")
-        time = session.tob
 
-        return dob, time
+        return dob, session.tob
 
     @staticmethod
     def load_chart(user_id, session):
@@ -110,122 +116,136 @@ class DialogEngine:
         return chart
 
     @staticmethod
-    def domain_response(user_id, domain, domain_data, language, question):
-
-        prompt = PromptBuilder.build_domain_prompt(
-            domain,
-            domain_data,
-            language,
-            user_id,
-            question
-        )
-
-        try:
-
-            reply = ask_ai("", prompt)
-
-            if reply and len(reply.strip()) > 10:
-                return reply
-
-        except:
-            pass
-
-        driver = domain_data.get("primary_driver")
-        risk = domain_data.get("risk_factor")
-
-        if language == "hi":
-            return f"Aapke {domain} par {driver} ka prabhav hai. {risk} kuch challenges la sakta hai."
-
-        return f"Your {domain} is influenced by {driver}. {risk} may introduce challenges."
-
-    @staticmethod
     def process(user_id, text, session):
 
         MemoryEngine.add_user_message(user_id, text)
 
         language = session.language or DialogEngine.detect_language(text)
 
-        domain = DialogEngine.detect_domain(text)
+        # --------------------------------------------------
+        # START
+        # --------------------------------------------------
 
         if text == "/start":
 
-            StateManager.update_session(user_id, step="dob")
+            StateManager.update_session(user_id, step="menu")
 
-            reply = "Enter your Date of Birth (example: 12-06-1994)"
+            return {
+                "text": "Welcome. How would you like to explore astrology today?",
+                "keyboard": MAIN_MENU
+            }
+
+        # --------------------------------------------------
+        # MENU SELECTION
+        # --------------------------------------------------
+
+        if session.step == "menu":
+
+            if "quick" in text.lower():
+
+                StateManager.update_session(user_id, step="quick")
+
+                return "Ask any astrology question."
+
+            if "birth chart" in text.lower():
+
+                StateManager.update_session(user_id, step="dob")
+
+                return "Please send your date of birth. Example: 6 Dec 1994"
+
+        # --------------------------------------------------
+        # QUICK QUESTION MODE
+        # --------------------------------------------------
+
+        if session.step == "quick":
+
+            prompt = PromptBuilder.build_general_prompt(
+                {},
+                text,
+                language,
+                user_id
+            )
+
+            reply = ask_ai("", prompt)
 
             MemoryEngine.add_bot_message(user_id, reply)
 
             return reply
+
+        # --------------------------------------------------
+        # DOB STEP
+        # --------------------------------------------------
 
         if session.step == "dob":
 
             dob = DialogEngine.parse_dob(text)
 
             if not dob:
-                return "Please enter date like 12-06-1994."
+                return "Please send your date of birth. Example: 6 Dec 1994"
 
             StateManager.update_session(user_id, dob=dob, step="tob")
 
-            reply = "Enter your Time of Birth"
+            return "Now tell me your birth time."
 
-            MemoryEngine.add_bot_message(user_id, reply)
-
-            return reply
+        # --------------------------------------------------
+        # TIME STEP
+        # --------------------------------------------------
 
         if session.step == "tob":
 
             time = DialogEngine.parse_time(text)
 
             if not time:
-                return "Enter time like 3:45 am or 15:45."
+                return "Please send time like 3:45 am"
 
             StateManager.update_session(user_id, tob=time, step="place")
 
-            reply = "Enter your Place of Birth"
+            return "Which city were you born in?"
 
-            MemoryEngine.add_bot_message(user_id, reply)
-
-            return reply
+        # --------------------------------------------------
+        # PLACE STEP
+        # --------------------------------------------------
 
         if session.step == "place":
 
             StateManager.update_session(user_id, place=text, step="question")
 
-            reply = {
-                "text": "What would you like to explore?",
-                "keyboard": MAIN_OPTIONS
+            return {
+                "text": "What area would you like to explore?",
+                "keyboard": DOMAIN_MENU
             }
 
-            return reply
+        # --------------------------------------------------
+        # DOMAIN ANALYSIS
+        # --------------------------------------------------
 
         if session.step == "question":
 
-            chart = DialogEngine.load_chart(user_id, session)
-
-            domains = chart.get("domain_scores")
+            domain = DialogEngine.detect_domain(text)
 
             if not domain:
 
                 return {
-                    "text": "Choose a topic",
-                    "keyboard": MAIN_OPTIONS
+                    "text": "Choose a topic.",
+                    "keyboard": DOMAIN_MENU
                 }
 
-            domain_data = domains.get(domain)
+            chart = DialogEngine.load_chart(user_id, session)
 
-            reply = DialogEngine.domain_response(
-                user_id,
+            domain_data = chart["domain_scores"].get(domain)
+
+            prompt = PromptBuilder.build_domain_prompt(
                 domain,
                 domain_data,
                 language,
+                user_id,
                 text
             )
 
+            reply = ask_ai("", prompt)
+
             MemoryEngine.add_bot_message(user_id, reply)
 
-            return {
-                "text": reply,
-                "keyboard": MAIN_OPTIONS
-            }
+            return reply
 
         return "Type /start to begin."
