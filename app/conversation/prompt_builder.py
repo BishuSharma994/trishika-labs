@@ -2,7 +2,7 @@ import json
 from app.conversation.memory_engine import MemoryEngine
 
 
-class PromptBuilder:
+class AstrologerPrompts:
 
     SYSTEM_CONTEXT = """
 You are a thoughtful Vedic astrologer speaking directly to a client.
@@ -28,7 +28,7 @@ Rules:
         }
 
         prompt = f"""
-{PromptBuilder.SYSTEM_CONTEXT}
+{AstrologerPrompts.SYSTEM_CONTEXT}
 
 Conversation so far:
 {context}
@@ -59,7 +59,7 @@ Explain what this means for the user in real life.
         }
 
         prompt = f"""
-{PromptBuilder.SYSTEM_CONTEXT}
+{AstrologerPrompts.SYSTEM_CONTEXT}
 
 Conversation so far:
 {context}
