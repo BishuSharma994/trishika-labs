@@ -5,6 +5,7 @@ from app.astro_engine import ParashariEngine
 from app.conversation.state_manager import StateManager
 from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.memory_engine import MemoryEngine
+from app.conversation.intent_router import IntentRouter
 from app.utils.birth_data_parser import BirthDataParser
 from app.ai import ask_ai
 
@@ -41,25 +42,6 @@ class DialogEngine:
                 return "hi"
 
         return "en"
-
-    @staticmethod
-    def detect_domain(text):
-
-        t = text.lower()
-
-        if "career" in t or "job" in t:
-            return "career"
-
-        if "finance" in t or "money" in t:
-            return "finance"
-
-        if "marriage" in t or "relationship" in t:
-            return "marriage"
-
-        if "health" in t:
-            return "health"
-
-        return None
 
     @staticmethod
     def normalize_birth_data(session):
@@ -196,12 +178,12 @@ class DialogEngine:
 
         if session.step == "question":
 
-            domain = DialogEngine.detect_domain(text)
+            domain = IntentRouter.detect_domain(text)
 
             if not domain:
 
                 return {
-                    "text": "Choose a topic.",
+                    "text": "Choose a topic or ask your question.",
                     "keyboard": DOMAIN_MENU
                 }
 
