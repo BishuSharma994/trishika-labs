@@ -1,11 +1,11 @@
 import json
 from datetime import datetime
-from dateutil import parser
 
 from app.astro_engine import ParashariEngine
 from app.conversation.state_manager import StateManager
-from app.conversation.prompt_builder import PromptBuilder
+from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.memory_engine import MemoryEngine
+from app.utils.birth_data_parser import BirthDataParser
 from app.ai import ask_ai
 
 
@@ -62,27 +62,9 @@ class DialogEngine:
         return None
 
     @staticmethod
-    def parse_dob(text):
-
-        try:
-            dt = parser.parse(text, dayfirst=True)
-            return dt.strftime("%d-%m-%Y")
-        except:
-            return None
-
-    @staticmethod
-    def parse_time(text):
-
-        try:
-            dt = parser.parse(text)
-            return dt.strftime("%H:%M")
-        except:
-            return None
-
-    @staticmethod
     def normalize_birth_data(session):
 
-        dob = datetime.strptime(session.dob, "%d-%m-%Y").strftime("%Y-%m-%d")
+        dob = datetime.strptime(session.dob, "%Y-%m-%d").strftime("%Y-%m-%d")
 
         return dob, session.tob
 
@@ -131,7 +113,7 @@ class DialogEngine:
             StateManager.update_session(user_id, step="menu")
 
             return {
-                "text": "Welcome. How would you like to explore astrology today?",
+                "text": "Welcome.\n\nI read birth charts using Vedic astrology and can answer questions about career, relationships, finances and life timing.\n\nChoose how you would like to begin.",
                 "keyboard": MAIN_MENU
             }
 
@@ -143,75 +125,68 @@ class DialogEngine:
 
             if "quick" in text.lower():
 
-                StateManager.update_session(user_id, step="quick")
+                StateManager.update_session(user_id, step="birthdata_quick")
 
-                return "Ask any astrology question."
+                return (
+                    "Alright.\n\n"
+                    "To answer your question I first need your birth details.\n\n"
+                    "Please send:\n"
+                    "Date of birth\n"
+                    "Time of birth\n"
+                    "Birth place (city)\n\n"
+                    "Example:\n"
+                    "6 Dec 1994 3:45 AM Delhi"
+                )
 
             if "birth chart" in text.lower():
 
-                StateManager.update_session(user_id, step="dob")
+                StateManager.update_session(user_id, step="birthdata_full")
 
-                return "Please send your date of birth. Example: 6 Dec 1994"
+                return (
+                    "Good.\n\n"
+                    "For a full birth chart reading I need your birth details.\n\n"
+                    "Please send:\n"
+                    "Date of birth\n"
+                    "Time of birth\n"
+                    "Birth place (city)\n\n"
+                    "Example:\n"
+                    "6 Dec 1994 3:45 AM Delhi"
+                )
 
         # --------------------------------------------------
-        # QUICK QUESTION MODE
+        # BIRTH DATA COLLECTION (QUICK / FULL)
         # --------------------------------------------------
 
-        if session.step == "quick":
+        if session.step in ["birthdata_quick", "birthdata_full"]:
 
-            prompt = PromptBuilder.build_general_prompt(
-                {},
-                text,
-                language,
-                user_id
+            parsed = BirthDataParser.parse_birth_data(text)
+
+            dob = parsed.get("date")
+            tob = parsed.get("time")
+            place = parsed.get("place")
+
+            if not dob or not tob or not place:
+
+                return (
+                    "I could not detect complete birth details.\n\n"
+                    "Please send:\n"
+                    "Date of birth\n"
+                    "Time of birth\n"
+                    "Birth place\n\n"
+                    "Example:\n"
+                    "6 Dec 1994 3:45 AM Delhi"
+                )
+
+            StateManager.update_session(
+                user_id,
+                dob=dob,
+                tob=tob,
+                place=place,
+                step="question"
             )
 
-            reply = ask_ai("", prompt)
-
-            MemoryEngine.add_bot_message(user_id, reply)
-
-            return reply
-
-        # --------------------------------------------------
-        # DOB STEP
-        # --------------------------------------------------
-
-        if session.step == "dob":
-
-            dob = DialogEngine.parse_dob(text)
-
-            if not dob:
-                return "Please send your date of birth. Example: 6 Dec 1994"
-
-            StateManager.update_session(user_id, dob=dob, step="tob")
-
-            return "Now tell me your birth time."
-
-        # --------------------------------------------------
-        # TIME STEP
-        # --------------------------------------------------
-
-        if session.step == "tob":
-
-            time = DialogEngine.parse_time(text)
-
-            if not time:
-                return "Please send time like 3:45 am"
-
-            StateManager.update_session(user_id, tob=time, step="place")
-
-            return "Which city were you born in?"
-
-        # --------------------------------------------------
-        # PLACE STEP
-        # --------------------------------------------------
-
-        if session.step == "place":
-
-            StateManager.update_session(user_id, place=text, step="question")
-
             return {
-                "text": "What area would you like to explore?",
+                "text": "Your birth details are received.\n\nWhat area would you like to explore?",
                 "keyboard": DOMAIN_MENU
             }
 
@@ -234,7 +209,7 @@ class DialogEngine:
 
             domain_data = chart["domain_scores"].get(domain)
 
-            prompt = PromptBuilder.build_domain_prompt(
+            prompt = AstrologerPrompts.build_domain_prompt(
                 domain,
                 domain_data,
                 language,
