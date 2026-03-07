@@ -117,7 +117,9 @@ class DialogEngine:
         language = getattr(session, "language", None)
         script = getattr(session, "script", None)
 
+        # --------------------------------------------------
         # START
+        # --------------------------------------------------
 
         if text == "/start":
 
@@ -128,8 +130,9 @@ class DialogEngine:
                 "keyboard": LANGUAGE_MENU
             }
 
-
+        # --------------------------------------------------
         # LANGUAGE SELECTION
+        # --------------------------------------------------
 
         if session.step == "language":
 
@@ -175,28 +178,13 @@ class DialogEngine:
                     "keyboard": MAIN_MENU_ROM
                 }
 
-
-        # MENU SELECTION
+        # --------------------------------------------------
+        # MENU STEP
+        # --------------------------------------------------
 
         if session.step == "menu":
 
-            text_clean = text.strip().lower()
-
-            quick_selected = (
-                text_clean == "🔮 quick astrology question".lower()
-                or text_clean == "🔮 turant jyotish prashna".lower()
-                or text_clean == "🔮 त्वरित ज्योतिष प्रश्न".lower()
-            )
-
-            full_selected = (
-                text_clean == "📜 full birth chart reading".lower()
-                or text_clean == "📜 poori kundli vishleshan".lower()
-                or text_clean == "📜 पूर्ण कुंडली विश्लेषण".lower()
-            )
-
-            if not quick_selected and not full_selected:
-                return None
-
+            # User pressed any menu button → move forward
             StateManager.update_session(user_id, step="birthdata")
 
             if language == "hi" and script == "roman":
@@ -230,8 +218,9 @@ class DialogEngine:
                 "6 Dec 1994 3:45 AM Delhi"
             )
 
-
+        # --------------------------------------------------
         # BIRTH DATA
+        # --------------------------------------------------
 
         if session.step == "birthdata":
 
@@ -275,8 +264,9 @@ class DialogEngine:
                 "keyboard": DOMAIN_MENU_EN
             }
 
-
+        # --------------------------------------------------
         # DOMAIN QUESTION
+        # --------------------------------------------------
 
         if session.step == "question":
 
@@ -299,6 +289,5 @@ class DialogEngine:
             MemoryEngine.add_bot_message(user_id, reply)
 
             return reply
-
 
         return "Type /start to begin."
