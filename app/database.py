@@ -1,11 +1,5 @@
-# app/database.py
-
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
-
-# =============================
-# ENGINE
-# =============================
 
 engine = create_engine(
     "sqlite:///users.db",
@@ -13,40 +7,31 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(bind=engine)
+
 Base = declarative_base()
 
 
-# =============================
-# SESSION TABLE
-# =============================
-
 class Session(Base):
+
     __tablename__ = "sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, unique=True, index=True)
+    id = Column(Integer, primary_key=True)
 
-    # Conversation state
+    user_id = Column(String, unique=True)
+
     step = Column(String, default="start")
 
-    # Birth details
-    dob = Column(String, nullable=True)
-    tob = Column(String, nullable=True)
-    place = Column(String, nullable=True)
+    dob = Column(String)
 
-    # === NEW FIELDS ===
-    # Cached deterministic chart
-    chart_data = Column(Text, nullable=True)
+    tob = Column(String)
 
-    # Remember last asked domain
-    last_domain = Column(String, nullable=True)
+    place = Column(String)
 
-    # Conversation continuity flag
-    conversation_mode = Column(Boolean, default=True)
+    language = Column(String)
 
+    last_domain = Column(String)
 
-# =============================
-# CREATE TABLES
-# =============================
+    chart_data = Column(Text)
+
 
 Base.metadata.create_all(engine)
