@@ -10,7 +10,17 @@ from app.utils.birth_data_parser import BirthDataParser
 from app.ai import ask_ai
 
 
-MAIN_MENU = {
+LANGUAGE_MENU = {
+    "keyboard": [
+        ["English"],
+        ["हिंदी"],
+        ["Hindi (Roman)"]
+    ],
+    "resize_keyboard": True
+}
+
+
+MAIN_MENU_EN = {
     "keyboard": [
         ["🔮 Quick Astrology Question"],
         ["📜 Full Birth Chart Reading"]
@@ -18,10 +28,43 @@ MAIN_MENU = {
     "resize_keyboard": True
 }
 
-DOMAIN_MENU = {
+MAIN_MENU_DEV = {
+    "keyboard": [
+        ["🔮 त्वरित ज्योतिष प्रश्न"],
+        ["📜 पूर्ण कुंडली विश्लेषण"]
+    ],
+    "resize_keyboard": True
+}
+
+MAIN_MENU_ROM = {
+    "keyboard": [
+        ["🔮 Turant Jyotish Prashna"],
+        ["📜 Poori Kundli Vishleshan"]
+    ],
+    "resize_keyboard": True
+}
+
+
+DOMAIN_MENU_EN = {
     "keyboard": [
         ["Career", "Finance"],
         ["Marriage", "Health"]
+    ],
+    "resize_keyboard": True
+}
+
+DOMAIN_MENU_DEV = {
+    "keyboard": [
+        ["करियर", "धन"],
+        ["विवाह", "स्वास्थ्य"]
+    ],
+    "resize_keyboard": True
+}
+
+DOMAIN_MENU_ROM = {
+    "keyboard": [
+        ["Career", "Paisa"],
+        ["Shaadi", "Health"]
     ],
     "resize_keyboard": True
 }
@@ -30,34 +73,9 @@ DOMAIN_MENU = {
 class DialogEngine:
 
     @staticmethod
-    def detect_language_and_script(text):
-
-        # Detect Devanagari Hindi
-        for c in text:
-            if '\u0900' <= c <= '\u097F':
-                return "hi", "devanagari"
-
-        # Detect Roman Hindi
-        roman_hindi_words = [
-            "hindi", "shaadi", "naukri", "paisa",
-            "bhavishya", "mera", "meri", "mujhe",
-            "kya", "kab", "kaise", "kyun",
-            "baat kijiye", "hindi me", "hindi mein"
-        ]
-
-        t = text.lower()
-
-        for w in roman_hindi_words:
-            if w in t:
-                return "hi", "roman"
-
-        return "en", "latin"
-
-    @staticmethod
     def normalize_birth_data(session):
 
         dob = datetime.strptime(session.dob, "%Y-%m-%d").strftime("%Y-%m-%d")
-
         return dob, session.tob
 
     @staticmethod
@@ -67,7 +85,6 @@ class DialogEngine:
         lon = 77.2090
 
         if session.chart_data:
-
             try:
                 return json.loads(session.chart_data)
             except:
@@ -94,13 +111,8 @@ class DialogEngine:
 
         MemoryEngine.add_user_message(user_id, text)
 
-        language, script = DialogEngine.detect_language_and_script(text)
-
-        if session.language != language or getattr(session, "script", None) != script:
-            StateManager.update_session(user_id, language=language, script=script)
-
-        language = session.language or language
-        script = getattr(session, "script", script)
+        language = session.language
+        script = getattr(session, "script", None)
 
         # --------------------------------------------------
         # START
@@ -108,23 +120,66 @@ class DialogEngine:
 
         if text == "/start":
 
-            StateManager.update_session(user_id, step="menu")
+            StateManager.update_session(user_id, step="language")
 
-            if language == "hi" and script == "devanagari":
+            return {
+                "text": "Please select your language\n\nकृपया अपनी भाषा चुनें",
+                "keyboard": LANGUAGE_MENU
+            }
+
+        # --------------------------------------------------
+        # LANGUAGE SELECTION
+        # --------------------------------------------------
+
+        if session.step == "language":
+
+            t = text.lower()
+
+            if "english" in t:
+
+                StateManager.update_session(
+                    user_id,
+                    language="en",
+                    script="latin",
+                    step="menu"
+                )
+
                 return {
-                    "text": "नमस्ते।\n\nमैं वैदिक ज्योतिष के आधार पर आपकी जन्म कुंडली पढ़कर करियर, विवाह, धन और जीवन के महत्वपूर्ण समय के बारे में बता सकता हूँ।\n\nआप कैसे शुरू करना चाहेंगे?",
-                    "keyboard": MAIN_MENU
+                    "text": "Welcome.\n\nHow would you like to begin?",
+                    "keyboard": MAIN_MENU_EN
                 }
 
-            if language == "hi" and script == "roman":
+            if "हिंदी" in text:
+
+                StateManager.update_session(
+                    user_id,
+                    language="hi",
+                    script="devanagari",
+                    step="menu"
+                )
+
                 return {
-                    "text": "Namaste.\n\nMain Vedic astrology ke aadhaar par aapki kundli dekhkar career, shaadi, paisa aur life timing ke baare mein bata sakta hoon.\n\nAap kaise shuru karna chahenge?",
-                    "keyboard": MAIN_MENU
+                    "text": "नमस्ते।\n\nआप कैसे शुरू करना चाहेंगे?",
+                    "keyboard": MAIN_MENU_DEV
+                }
+
+            if "roman" in t or "hindi" in t:
+
+                StateManager.update_session(
+                    user_id,
+                    language="hi",
+                    script="roman",
+                    step="menu"
+                )
+
+                return {
+                    "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
+                    "keyboard": MAIN_MENU_ROM
                 }
 
             return {
-                "text": "Welcome.\n\nI read birth charts using Vedic astrology and can answer questions about career, relationships, finances and life timing.\n\nChoose how you would like to begin.",
-                "keyboard": MAIN_MENU
+                "text": "Please choose a language / कृपया भाषा चुनें",
+                "keyboard": LANGUAGE_MENU
             }
 
         # --------------------------------------------------
@@ -133,89 +188,73 @@ class DialogEngine:
 
         if session.step == "menu":
 
-            if "quick" in text.lower():
+            t = text.lower()
 
-                StateManager.update_session(user_id, step="birthdata_quick")
+            if "quick" in t or "turant" in t or "त्वरित" in text:
+
+                StateManager.update_session(user_id, step="birthdata")
 
                 if language == "hi" and script == "devanagari":
                     return (
-                        "ठीक है।\n\n"
                         "आपका प्रश्न देखने के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
                         "कृपया भेजें:\n"
                         "जन्म तिथि\n"
                         "जन्म समय\n"
-                        "जन्म स्थान (शहर)\n\n"
-                        "उदाहरण:\n"
-                        "6 Dec 1994 3:45 AM Delhi"
+                        "जन्म स्थान"
                     )
 
                 if language == "hi" and script == "roman":
                     return (
-                        "Theek hai.\n\n"
                         "Aapka prashna dekhne ke liye mujhe aapki birth details chahiye.\n\n"
-                        "Please bheje:\n"
-                        "Date of birth\n"
-                        "Birth time\n"
-                        "Birth place (city)\n\n"
-                        "Example:\n"
-                        "6 Dec 1994 3:45 AM Delhi"
+                        "Kripya bheje:\n"
+                        "Janm tareekh\n"
+                        "Janm samay\n"
+                        "Janm sthan"
                     )
 
                 return (
-                    "Alright.\n\n"
-                    "To answer your question I first need your birth details.\n\n"
+                    "To answer your question I need your birth details.\n\n"
                     "Please send:\n"
                     "Date of birth\n"
                     "Time of birth\n"
-                    "Birth place (city)\n\n"
-                    "Example:\n"
-                    "6 Dec 1994 3:45 AM Delhi"
+                    "Birth place"
                 )
 
-            if "birth chart" in text.lower():
+            if "chart" in t or "kundli" in t or "कुंडली" in text:
 
-                StateManager.update_session(user_id, step="birthdata_full")
+                StateManager.update_session(user_id, step="birthdata")
 
                 if language == "hi" and script == "devanagari":
                     return (
-                        "अच्छा।\n\n"
-                        "पूर्ण कुंडली पढ़ने के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
+                        "पूर्ण कुंडली विश्लेषण के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
                         "कृपया भेजें:\n"
                         "जन्म तिथि\n"
                         "जन्म समय\n"
-                        "जन्म स्थान (शहर)\n\n"
-                        "उदाहरण:\n"
-                        "6 Dec 1994 3:45 AM Delhi"
+                        "जन्म स्थान"
                     )
 
                 if language == "hi" and script == "roman":
                     return (
-                        "Achha.\n\n"
-                        "Full kundli reading ke liye mujhe aapki birth details chahiye.\n\n"
-                        "Please bheje:\n"
-                        "Date of birth\n"
-                        "Birth time\n"
-                        "Birth place\n\n"
-                        "Example:\n"
-                        "6 Dec 1994 3:45 AM Delhi"
+                        "Poori kundli dekhne ke liye mujhe aapki birth details chahiye.\n\n"
+                        "Kripya bheje:\n"
+                        "Janm tareekh\n"
+                        "Janm samay\n"
+                        "Janm sthan"
                     )
 
                 return (
-                    "Good.\n\n"
                     "For a full birth chart reading I need your birth details.\n\n"
                     "Please send:\n"
                     "Date of birth\n"
                     "Time of birth\n"
-                    "Birth place (city)\n\n"
-                    "Example:\n"
-                    "6 Dec 1994 3:45 AM Delhi"
+                    "Birth place"
                 )
 
         # --------------------------------------------------
         # BIRTH DATA COLLECTION
         # --------------------------------------------------
 
-        if session.step in ["birthdata_quick", "birthdata_full"]:
+        if session.step == "birthdata":
 
             parsed = BirthDataParser.parse_birth_data(text)
 
@@ -252,19 +291,19 @@ class DialogEngine:
 
             if language == "hi" and script == "devanagari":
                 return {
-                    "text": "आपकी जन्म जानकारी मिल गई है।\n\nआप किस विषय के बारे में जानना चाहते हैं?",
-                    "keyboard": DOMAIN_MENU
+                    "text": "आप किस विषय के बारे में जानना चाहते हैं?",
+                    "keyboard": DOMAIN_MENU_DEV
                 }
 
             if language == "hi" and script == "roman":
                 return {
-                    "text": "Aapki birth details mil gayi hain.\n\nAap kis topic ke baare mein jaana chahte hain?",
-                    "keyboard": DOMAIN_MENU
+                    "text": "Aap kis vishay ke baare mein jaana chahte hain?",
+                    "keyboard": DOMAIN_MENU_ROM
                 }
 
             return {
-                "text": "Your birth details are received.\n\nWhat area would you like to explore?",
-                "keyboard": DOMAIN_MENU
+                "text": "What area would you like to explore?",
+                "keyboard": DOMAIN_MENU_EN
             }
 
         # --------------------------------------------------
@@ -280,12 +319,12 @@ class DialogEngine:
                 if language == "hi":
                     return {
                         "text": "कृपया कोई विषय चुनें या अपना प्रश्न पूछें।",
-                        "keyboard": DOMAIN_MENU
+                        "keyboard": DOMAIN_MENU_DEV
                     }
 
                 return {
                     "text": "Choose a topic or ask your question.",
-                    "keyboard": DOMAIN_MENU
+                    "keyboard": DOMAIN_MENU_EN
                 }
 
             chart = DialogEngine.load_chart(user_id, session)
@@ -296,6 +335,7 @@ class DialogEngine:
                 domain,
                 domain_data,
                 language,
+                script,
                 user_id,
                 text
             )
