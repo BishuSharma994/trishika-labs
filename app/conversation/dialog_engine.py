@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from dateutil import parser
 
 from app.astro_engine import ParashariEngine
 from app.conversation.state_manager import StateManager
@@ -7,11 +8,21 @@ from app.conversation.prompt_builder import PromptBuilder
 from app.ai import ask_ai
 
 
+MAIN_OPTIONS = {
+    "keyboard": [
+        ["Career", "Finance"],
+        ["Marriage", "Health"],
+        ["Future outlook"]
+    ],
+    "resize_keyboard": True
+}
+
+
 class DialogEngine:
 
-    # ----------------------------------------------------
+    # --------------------------------------------------
     # LANGUAGE DETECTION
-    # ----------------------------------------------------
+    # --------------------------------------------------
 
     @staticmethod
     def detect_language(text):
@@ -28,9 +39,9 @@ class DialogEngine:
 
         return "en"
 
-    # ----------------------------------------------------
+    # --------------------------------------------------
     # DOMAIN DETECTION
-    # ----------------------------------------------------
+    # --------------------------------------------------
 
     @staticmethod
     def detect_domain(text):
@@ -49,17 +60,11 @@ class DialogEngine:
         if "health" in t:
             return "health"
 
-        if "vehicle" in t or "car" in t or "gadi" in t:
-            return "vehicle"
-
-        if "property" in t or "ghar" in t or "house" in t:
-            return "property"
-
         return None
 
-    # ----------------------------------------------------
+    # --------------------------------------------------
     # INTENT DETECTION
-    # ----------------------------------------------------
+    # --------------------------------------------------
 
     @staticmethod
     def detect_intent(text):
@@ -75,30 +80,49 @@ class DialogEngine:
         if "when" in t or "kab" in t:
             return "timing"
 
-        if "next year" in t or "projection" in t:
-            return "projection"
-
         return "general"
 
-    # ----------------------------------------------------
-    # NORMALIZE DOB + TIME
-    # ----------------------------------------------------
+    # --------------------------------------------------
+    # DOB PARSER
+    # --------------------------------------------------
+
+    @staticmethod
+    def parse_dob(text):
+
+        try:
+            dt = parser.parse(text, dayfirst=True)
+            return dt.strftime("%d-%m-%Y")
+        except:
+            return None
+
+    # --------------------------------------------------
+    # TIME PARSER
+    # --------------------------------------------------
+
+    @staticmethod
+    def parse_time(text):
+
+        try:
+            dt = parser.parse(text)
+            return dt.strftime("%H:%M")
+        except:
+            return None
+
+    # --------------------------------------------------
+    # NORMALIZE BIRTH DATA
+    # --------------------------------------------------
 
     @staticmethod
     def normalize_birth_data(session):
 
         dob = datetime.strptime(session.dob, "%d-%m-%Y").strftime("%Y-%m-%d")
-
-        try:
-            time = datetime.strptime(session.tob, "%H:%M").strftime("%H:%M")
-        except:
-            time = datetime.strptime(session.tob, "%I:%M %p").strftime("%H:%M")
+        time = session.tob
 
         return dob, time
 
-    # ----------------------------------------------------
+    # --------------------------------------------------
     # LOAD OR GENERATE CHART
-    # ----------------------------------------------------
+    # --------------------------------------------------
 
     @staticmethod
     def load_chart(user_id, session):
@@ -106,32 +130,39 @@ class DialogEngine:
         lat = 28.6139
         lon = 77.2090
 
-        if not session.chart_data:
+        # chart already stored
+        if session.chart_data:
 
-            dob, time = DialogEngine.normalize_birth_data(session)
+            try:
+                return json.loads(session.chart_data)
+            except:
+                pass
 
-            chart = ParashariEngine.generate_chart(
-                dob,
-                time,
-                lat,
-                lon
-            )
+        dob, time = DialogEngine.normalize_birth_data(session)
 
-            StateManager.update_session(
-                user_id,
-                chart_data=json.dumps(chart)
-            )
+        chart = ParashariEngine.generate_chart(
+            dob,
+            time,
+            lat,
+            lon
+        )
 
-            return chart
+        StateManager.update_session(
+            user_id,
+            chart_data=json.dumps(chart)
+        )
 
-        return json.loads(session.chart_data)
+        return chart
 
-    # ----------------------------------------------------
+    # --------------------------------------------------
     # DOMAIN RESPONSE
-    # ----------------------------------------------------
+    # --------------------------------------------------
 
     @staticmethod
     def domain_response(domain, domain_data, language):
+
+        if not domain_data:
+            return "I need a little more information before answering that."
 
         prompt = PromptBuilder.build_domain_prompt(
             domain,
@@ -140,113 +171,28 @@ class DialogEngine:
         )
 
         try:
+
             reply = ask_ai("", prompt)
 
             if reply and len(reply.strip()) > 10:
                 return reply
 
-        except Exception:
+        except:
             pass
 
-        # fallback deterministic
+        # deterministic fallback
 
-        driver = domain_data["primary_driver"]
-        risk = domain_data["risk_factor"]
-        momentum = domain_data["momentum"]
-
-        if language == "hi":
-
-            return (
-                f"Aapke {domain} par iss samay {driver} ka prabhav hai.\n"
-                f"Momentum {momentum} hai aur {risk} kuch challenges la sakta hai.\n"
-                "Aap kis decision ke baare mein soch rahe hain?"
-            )
-
-        else:
-
-            return (
-                f"Your {domain} is currently influenced by {driver}.\n"
-                f"The momentum is {momentum}, while {risk} may create some challenges.\n"
-                "Are you considering any specific decision?"
-            )
-
-    # ----------------------------------------------------
-    # DECISION RESPONSE
-    # ----------------------------------------------------
-
-    @staticmethod
-    def decision_response(domain, domain_data, language):
-
-        prompt = PromptBuilder.build_decision_prompt(
-            domain,
-            domain_data,
-            language
-        )
-
-        try:
-            reply = ask_ai("", prompt)
-
-            if reply and len(reply.strip()) > 10:
-                return reply
-
-        except Exception:
-            pass
+        driver = domain_data.get("primary_driver", "planetary influences")
+        risk = domain_data.get("risk_factor", "some factors")
 
         if language == "hi":
+            return f"Aapke {domain} par {driver} ka prabhav hai. {risk} kuch challenges la sakta hai."
 
-            return (
-                f"{domain} se jude decisions jaise job change, promotion "
-                "ya financial commitments aa sakte hain.\n"
-                "Decision lene se pehle stability evaluate karna zaroori hai."
-            )
+        return f"Your {domain} is influenced by {driver}. {risk} may introduce challenges."
 
-        else:
-
-            return (
-                f"Decisions related to {domain} such as job change, "
-                "promotion or financial commitments may arise.\n"
-                "Evaluate stability before acting."
-            )
-
-    # ----------------------------------------------------
-    # FUTURE RESPONSE
-    # ----------------------------------------------------
-
-    @staticmethod
-    def future_response(domain, domain_data, language):
-
-        prompt = PromptBuilder.build_future_prompt(
-            domain,
-            domain_data,
-            language
-        )
-
-        try:
-            reply = ask_ai("", prompt)
-
-            if reply and len(reply.strip()) > 10:
-                return reply
-
-        except Exception:
-            pass
-
-        if language == "hi":
-
-            return (
-                f"Agle kuch samay mein {domain} mein dheere dheere parivartan dekhne ko mil sakte hain.\n"
-                "Stability maintain karna important rahega."
-            )
-
-        else:
-
-            return (
-                f"The coming period may bring gradual changes in your {domain}.\n"
-                "Maintaining stability will be important."
-            )
-
-    # ----------------------------------------------------
+    # --------------------------------------------------
     # MAIN PROCESSOR
-    # ----------------------------------------------------
+    # --------------------------------------------------
 
     @staticmethod
     def process(user_id, text, session):
@@ -272,70 +218,115 @@ class DialogEngine:
         domain = DialogEngine.detect_domain(text)
         intent = DialogEngine.detect_intent(text)
 
-        # ----------------------------------------------------
-        # DOMAIN MEMORY FIX
-        # ----------------------------------------------------
+        # --------------------------------------------------
+        # DOMAIN MEMORY
+        # --------------------------------------------------
 
         if not domain and session.last_domain:
             domain = session.last_domain
 
-        # ----------------------------------------------------
+        # --------------------------------------------------
         # START FLOW
-        # ----------------------------------------------------
+        # --------------------------------------------------
 
         if text == "/start":
 
+            if session.dob and session.tob and session.place:
+
+                return {
+                    "text": "Welcome back. What would you like to explore?",
+                    "keyboard": MAIN_OPTIONS
+                }
+
             StateManager.update_session(user_id, step="dob")
 
-            return "Enter your Date of Birth (DD-MM-YYYY)"
+            return "Enter your Date of Birth (example: 12-06-1994)"
+
+        # --------------------------------------------------
+        # DOB STEP
+        # --------------------------------------------------
 
         if session.step == "dob":
 
-            StateManager.update_session(user_id, dob=text, step="tob")
+            dob = DialogEngine.parse_dob(text)
 
-            return "Enter your Time of Birth"
+            if not dob:
+                return "Please enter date like 12-06-1994 or 12/06/1994."
+
+            StateManager.update_session(
+                user_id,
+                dob=dob,
+                step="tob"
+            )
+
+            return "Enter your Time of Birth (example: 3:45 am)"
+
+        # --------------------------------------------------
+        # TIME STEP
+        # --------------------------------------------------
 
         if session.step == "tob":
 
-            StateManager.update_session(user_id, tob=text, step="place")
+            time = DialogEngine.parse_time(text)
+
+            if not time:
+                return "Please enter time like 3:45 am or 15:45."
+
+            StateManager.update_session(
+                user_id,
+                tob=time,
+                step="place"
+            )
 
             return "Enter your Place of Birth"
 
+        # --------------------------------------------------
+        # PLACE STEP
+        # --------------------------------------------------
+
         if session.step == "place":
 
-            StateManager.update_session(user_id, place=text, step="question")
+            StateManager.update_session(
+                user_id,
+                place=text,
+                step="question"
+            )
 
-            return "What would you like to explore first?"
+            return {
+                "text": "What would you like to explore first?",
+                "keyboard": MAIN_OPTIONS
+            }
 
-        # ----------------------------------------------------
+        # --------------------------------------------------
         # CONVERSATION MODE
-        # ----------------------------------------------------
+        # --------------------------------------------------
 
         if session.step == "question":
 
             chart = DialogEngine.load_chart(user_id, session)
 
-            domains = chart["domain_scores"]
+            domains = chart.get("domain_scores", {})
 
             if not domain:
 
-                if language == "hi":
-                    return "Aap kis shetra ke baare mein jaana chahte hain? Career, paisa, shaadi ya health?"
-                else:
-                    return "Which area would you like to explore? Career, finance, marriage or health?"
+                return {
+                    "text": "Choose a topic to explore.",
+                    "keyboard": MAIN_OPTIONS
+                }
 
             StateManager.update_session(user_id, last_domain=domain)
 
             domain_data = domains.get(domain)
 
-            # intent routing
+            reply = DialogEngine.domain_response(
+                domain,
+                domain_data,
+                language
+            )
 
-            if intent == "decision":
-                return DialogEngine.decision_response(domain, domain_data, language)
-
-            if intent in ["future", "projection"]:
-                return DialogEngine.future_response(domain, domain_data, language)
-
-            return DialogEngine.domain_response(domain, domain_data, language)
+            return {
+                "text": reply,
+                "keyboard": MAIN_OPTIONS
+            }
 
         return "Please start with /start."
