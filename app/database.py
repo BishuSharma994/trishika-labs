@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 engine = create_engine(
@@ -35,6 +35,8 @@ class Session(Base):
 
     chart_data = Column(Text)
 
+    theme_shown = Column(Boolean, default=False)
+
 
 def _ensure_schema_updates():
     """Apply lightweight SQLite schema updates for existing local databases."""
@@ -46,6 +48,9 @@ def _ensure_schema_updates():
 
         if columns and "script" not in columns:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN script VARCHAR"))
+
+        if columns and "theme_shown" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN theme_shown BOOLEAN DEFAULT 0"))
 
 
 Base.metadata.create_all(engine)
