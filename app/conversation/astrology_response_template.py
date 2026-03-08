@@ -1,10 +1,21 @@
 class AstrologyResponseTemplate:
 
-    DOMAIN_LABELS = {
-        "career": {"en": "career", "hi_dev": "करियर", "hi_rom": "career"},
-        "finance": {"en": "finance", "hi_dev": "धन", "hi_rom": "paisa"},
-        "marriage": {"en": "marriage", "hi_dev": "विवाह", "hi_rom": "shaadi"},
-        "health": {"en": "health", "hi_dev": "स्वास्थ्य", "hi_rom": "health"}
+    MOMENTUM_LINES_EN = {
+        "Positive": "Momentum is currently supportive, so near-term progress is realistic with disciplined effort.",
+        "Neutral": "Momentum is steady, so outcomes should improve gradually through consistent actions.",
+        "Challenging": "Momentum is slower right now, so cautious pacing and patience are important."
+    }
+
+    MOMENTUM_LINES_DEV = {
+        "Positive": "अभी गति सहयोगी है, इसलिए अनुशासित प्रयास से निकट भविष्य में प्रगति संभव है।",
+        "Neutral": "अभी गति स्थिर है, इसलिए निरंतर प्रयास से परिणाम धीरे-धीरे बेहतर होंगे।",
+        "Challenging": "अभी गति धीमी है, इसलिए धैर्य और सावधानी के साथ आगे बढ़ना बेहतर रहेगा।"
+    }
+
+    MOMENTUM_LINES_ROM = {
+        "Positive": "Abhi momentum supportive hai, isliye disciplined effort se near-term progress mumkin hai.",
+        "Neutral": "Abhi momentum steady hai, isliye lagataar action se results dheere-dheere better honge.",
+        "Challenging": "Abhi momentum slow hai, isliye patience aur caution ke saath aage badhna better rahega."
     }
 
     @staticmethod
@@ -16,143 +27,146 @@ class AstrologyResponseTemplate:
         return language == "hi" and script == "roman"
 
     @staticmethod
-    def _domain_name(domain, language, script):
-        labels = AstrologyResponseTemplate.DOMAIN_LABELS.get(domain, {})
+    def _clean(text, fallback):
+        value = (text or "").strip()
+        return value if value else fallback
 
+    @staticmethod
+    def _merge(primary, secondary):
+        first = (primary or "").strip()
+        second = (secondary or "").strip()
+
+        if first and second:
+            return f"{first} {second}"
+        if first:
+            return first
+        return second
+
+    @staticmethod
+    def _deterministic_observation(domain, score, language, script):
         if AstrologyResponseTemplate._is_hi_dev(language, script):
-            return labels.get("hi_dev", "इस विषय")
+            return f"{domain} क्षेत्र का संकेतक स्कोर अभी {score}/100 दिख रहा है।"
 
         if AstrologyResponseTemplate._is_hi_rom(language, script):
-            return labels.get("hi_rom", "is vishay")
+            return f"{domain} shetra ka sanketik score abhi {score}/100 dikh raha hai."
 
-        return labels.get("en", "this area")
-
-    @staticmethod
-    def _headers():
-        return {
-            "observation": "Observation:",
-            "cause": "Planetary Cause:",
-            "timing": "Timing Insight:",
-            "guidance": "Guidance:",
-            "followup": "Follow-up Question:"
-        }
+        return f"The {domain} signal score is {score}/100 in this chart snapshot."
 
     @staticmethod
-    def _build_observation(domain, score, language, script):
-        domain_name = AstrologyResponseTemplate._domain_name(domain, language, script)
+    def _deterministic_cause(primary_driver, language, script):
+        driver = (primary_driver or "Unknown").strip() or "Unknown"
 
         if AstrologyResponseTemplate._is_hi_dev(language, script):
-            tone = "मजबूत" if score >= 65 else "मध्यम" if score >= 50 else "चुनौतीपूर्ण"
-            return f"आपकी कुंडली में {domain_name} के योग {tone} दिखाई दे रहे हैं।"
+            return f"इस विषय में मुख्य ग्रह-कारक {driver} है।"
 
         if AstrologyResponseTemplate._is_hi_rom(language, script):
-            tone = "strong" if score >= 65 else "moderate" if score >= 50 else "challenging"
-            return f"Aapki kundli mein {domain_name} ke yog {tone} dikh rahe hain."
+            return f"Is vishay mein primary grah-driver {driver} hai."
 
-        tone = "strong" if score >= 65 else "moderate" if score >= 50 else "challenging"
-        return f"Your chart shows {tone} indications in {domain_name}."
+        return f"The primary planetary driver here is {driver}."
 
     @staticmethod
-    def _build_cause(primary_driver, language, script):
-        planet = primary_driver or "Unknown"
+    def _deterministic_timing(momentum, language, script):
+        if AstrologyResponseTemplate._is_hi_dev(language, script):
+            return AstrologyResponseTemplate.MOMENTUM_LINES_DEV.get(
+                momentum,
+                AstrologyResponseTemplate.MOMENTUM_LINES_DEV["Neutral"]
+            )
+
+        if AstrologyResponseTemplate._is_hi_rom(language, script):
+            return AstrologyResponseTemplate.MOMENTUM_LINES_ROM.get(
+                momentum,
+                AstrologyResponseTemplate.MOMENTUM_LINES_ROM["Neutral"]
+            )
+
+        return AstrologyResponseTemplate.MOMENTUM_LINES_EN.get(
+            momentum,
+            AstrologyResponseTemplate.MOMENTUM_LINES_EN["Neutral"]
+        )
+
+    @staticmethod
+    def _deterministic_caution(risk_factor, language, script):
+        risk = (risk_factor or "Unknown").strip() or "Unknown"
 
         if AstrologyResponseTemplate._is_hi_dev(language, script):
-            return f"{planet} का प्रभाव इस विषय का मुख्य कारण बन रहा है और परिणामों को प्रभावित कर रहा है।"
+            return f"सावधानी: {risk} से जुड़ी स्थितियों में जल्दबाज़ी से बचें।"
 
         if AstrologyResponseTemplate._is_hi_rom(language, script):
-            return f"{planet} ka prabhav is vishay ka primary cause ban raha hai aur results ko influence kar raha hai."
+            return f"Savdhani: {risk} se judi situations mein jaldbaazi se bachein."
 
-        return f"{planet} is the primary planetary driver shaping outcomes in this area."
-
-    @staticmethod
-    def _build_timing(momentum, language, script):
-        m = (momentum or "Neutral").lower()
-
-        if AstrologyResponseTemplate._is_hi_dev(language, script):
-            if m == "positive":
-                return "आने वाले 2-3 वर्षों में धीरे-धीरे प्रगति और स्थिरता के संकेत मजबूत हैं।"
-            if m == "challenging":
-                return "अगले 12-18 महीनों में सावधानी के साथ धीरे-धीरे सुधार की संभावना है।"
-            return "अगले 1-2 वर्षों में परिणाम क्रमिक रूप से बेहतर हो सकते हैं।"
-
-        if AstrologyResponseTemplate._is_hi_rom(language, script):
-            if m == "positive":
-                return "Agle 2-3 saalon mein dheere dheere progress aur stability ke strong signals hain."
-            if m == "challenging":
-                return "Agle 12-18 mahino mein caution ke saath gradual sudhar possible hai."
-            return "Agle 1-2 saalon mein results dheere dheere better ho sakte hain."
-
-        if m == "positive":
-            return "Over the next 2-3 years, momentum supports gradual growth and stronger stability."
-        if m == "challenging":
-            return "Over the next 12-18 months, improvement is possible with caution and patience."
-        return "Over the next 1-2 years, progress is likely to be gradual."
+        return f"Caution: avoid impulsive decisions around {risk}-linked pressure."
 
     @staticmethod
-    def _build_guidance(ai_guidance, risk_factor, language, script):
-        base_guidance = (ai_guidance or "").strip()
-        risk = risk_factor or "Unknown"
-
-        if AstrologyResponseTemplate._is_hi_dev(language, script):
-            warning = f"चेतावनी: {risk} से जुड़े उतार-चढ़ाव में जल्दबाजी से बचें।"
-            return f"{warning} {base_guidance}".strip()
-
-        if AstrologyResponseTemplate._is_hi_rom(language, script):
-            warning = f"Warning: {risk} se jude utar-chadhav mein jaldbaazi se bachein."
-            return f"{warning} {base_guidance}".strip()
-
-        warning = f"Warning: avoid impulsive decisions around {risk}-linked fluctuations."
-        return f"{warning} {base_guidance}".strip()
-
-    @staticmethod
-    def _build_followup(domain, language, script):
-        if AstrologyResponseTemplate._is_hi_dev(language, script):
-            if domain == "career":
-                return "क्या आप नौकरी बदलना चाहते हैं या प्रमोशन पर ध्यान दे रहे हैं?"
-            if domain == "finance":
-                return "क्या आपका फोकस बचत पर है या निवेश पर?"
-            if domain == "marriage":
-                return "क्या आप नए रिश्ते की तलाश में हैं या मौजूदा संबंध पर स्पष्टता चाहते हैं?"
-            return "क्या आपका सवाल लाइफस्टाइल, तनाव या किसी विशेष स्वास्थ्य चिंता से जुड़ा है?"
-
-        if AstrologyResponseTemplate._is_hi_rom(language, script):
-            if domain == "career":
-                return "Kya aap job switch chahte hain ya promotion par focus kar rahe hain?"
-            if domain == "finance":
-                return "Kya aapka focus savings par hai ya investment par?"
-            if domain == "marriage":
-                return "Kya aap naya rishta dekh rahe hain ya existing relationship par clarity chahte hain?"
-            return "Kya aapka sawal lifestyle, stress ya kisi specific health concern se juda hai?"
-
-        if domain == "career":
-            return "Are you focused on a job switch, or growth in your current role?"
-        if domain == "finance":
-            return "Are you prioritizing savings, debt reduction, or investments right now?"
-        if domain == "marriage":
-            return "Are you seeking a new relationship, or clarity in an existing one?"
-        return "Is your concern mainly lifestyle balance, stress, or a specific health pattern?"
-
-    @staticmethod
-    def build_response(domain, domain_data, ai_guidance, language, script):
+    def build_response(
+        domain,
+        domain_data,
+        llm_fields,
+        language,
+        script,
+        followup_question=None
+    ):
         domain_data = domain_data or {}
+        llm_fields = llm_fields or {}
 
         score = domain_data.get("score", 50)
         primary_driver = domain_data.get("primary_driver", "Unknown")
         risk_factor = domain_data.get("risk_factor", "Unknown")
         momentum = domain_data.get("momentum", "Neutral")
 
-        headers = AstrologyResponseTemplate._headers()
+        llm_observation = llm_fields.get("observation", "")
+        llm_cause = llm_fields.get("cause", "")
+        llm_timing = llm_fields.get("timing", "")
+        llm_guidance = llm_fields.get("guidance", "")
+        llm_followup = llm_fields.get("followup", "")
 
-        observation = AstrologyResponseTemplate._build_observation(domain, score, language, script)
-        cause = AstrologyResponseTemplate._build_cause(primary_driver, language, script)
-        timing = AstrologyResponseTemplate._build_timing(momentum, language, script)
-        guidance = AstrologyResponseTemplate._build_guidance(ai_guidance, risk_factor, language, script)
-        followup = AstrologyResponseTemplate._build_followup(domain, language, script)
+        observation = AstrologyResponseTemplate._clean(
+            AstrologyResponseTemplate._merge(
+                AstrologyResponseTemplate._deterministic_observation(domain, score, language, script),
+                llm_observation
+            ),
+            AstrologyResponseTemplate._deterministic_observation(domain, score, language, script)
+        )
+
+        cause = AstrologyResponseTemplate._clean(
+            AstrologyResponseTemplate._merge(
+                AstrologyResponseTemplate._deterministic_cause(primary_driver, language, script),
+                llm_cause
+            ),
+            AstrologyResponseTemplate._deterministic_cause(primary_driver, language, script)
+        )
+
+        timing = AstrologyResponseTemplate._clean(
+            AstrologyResponseTemplate._merge(
+                AstrologyResponseTemplate._deterministic_timing(momentum, language, script),
+                llm_timing
+            ),
+            AstrologyResponseTemplate._deterministic_timing(momentum, language, script)
+        )
+
+        guidance = AstrologyResponseTemplate._clean(
+            AstrologyResponseTemplate._merge(
+                AstrologyResponseTemplate._deterministic_caution(risk_factor, language, script),
+                llm_guidance
+            ),
+            AstrologyResponseTemplate._deterministic_caution(risk_factor, language, script)
+        )
+
+        followup = AstrologyResponseTemplate._clean(
+            followup_question or llm_followup,
+            (
+                "क्या आप इस विषय को और विस्तार से समझना चाहेंगे?"
+                if AstrologyResponseTemplate._is_hi_dev(language, script)
+                else (
+                    "Kya aap is vishay ko aur detail mein samajhna chahenge?"
+                    if AstrologyResponseTemplate._is_hi_rom(language, script)
+                    else "Would you like to explore this area in more detail?"
+                )
+            )
+        )
 
         return (
-            f"{headers['observation']}\n{observation}\n\n"
-            f"{headers['cause']}\n{cause}\n\n"
-            f"{headers['timing']}\n{timing}\n\n"
-            f"{headers['guidance']}\n{guidance}\n\n"
-            f"{headers['followup']}\n{followup}"
+            f"Observation:\n{observation}\n\n"
+            f"Planetary Cause:\n{cause}\n\n"
+            f"Timing Insight:\n{timing}\n\n"
+            f"Guidance:\n{guidance}\n\n"
+            f"Follow-up Question:\n{followup}"
         )

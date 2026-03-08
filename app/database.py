@@ -32,6 +32,9 @@ class Session(Base):
     script = Column(String)
 
     last_domain = Column(String)
+    conversation_phase = Column(String)
+    last_followup_question = Column(Text)
+    persona_introduced = Column(Boolean, default=False)
 
     chart_data = Column(Text)
 
@@ -51,6 +54,15 @@ def _ensure_schema_updates():
 
         if columns and "theme_shown" not in columns:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN theme_shown BOOLEAN DEFAULT 0"))
+
+        if columns and "conversation_phase" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN conversation_phase VARCHAR"))
+
+        if columns and "last_followup_question" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN last_followup_question TEXT"))
+
+        if columns and "persona_introduced" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN persona_introduced BOOLEAN DEFAULT 0"))
 
 
 Base.metadata.create_all(engine)
