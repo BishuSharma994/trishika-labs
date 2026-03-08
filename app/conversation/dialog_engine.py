@@ -10,6 +10,7 @@ from app.conversation.timing_router import TimingRouter
 from app.conversation.followup_router import FollowupRouter
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.planet_translator import PlanetTranslator
+from app.conversation.astrology_response_template import AstrologyResponseTemplate
 from app.utils.birth_data_parser import BirthDataParser
 from app.ai import ask_ai
 
@@ -90,7 +91,7 @@ class DialogEngine:
         if session.chart_data:
             try:
                 return json.loads(session.chart_data)
-            except:
+            except Exception:
                 pass
 
         dob, time = DialogEngine.normalize_birth_data(session)
@@ -114,67 +115,70 @@ class DialogEngine:
 
         MemoryEngine.add_user_message(user_id, text)
 
-        language = session.language
-        script = getattr(session, "script", None)
-
-        # --------------------------------------------------
-        # START
-        # --------------------------------------------------
+        # Always process with a fresh DB snapshot to avoid stale ORM objects.
+        session = StateManager.get_or_create_session(user_id)
+        language = session.language or "en"
+        script = getattr(session, "script", None) or "latin"
 
         if text == "/start":
-
-            StateManager.update_session(user_id, step="language")
+            StateManager.update_session(
+                user_id,
+                step="language",
+                language=None,
+                script=None
+            )
 
             return {
                 "text": "Please select your language\n\nकृपया अपनी भाषा चुनें",
                 "keyboard": LANGUAGE_MENU
             }
 
-        # --------------------------------------------------
-        # LANGUAGE SELECTION
-        # --------------------------------------------------
-
         if session.step == "language":
-
             t = text.lower()
 
-            if "english" in t:
-
-                StateManager.update_session(
-                    user_id,
-                    language="en",
-                    script="latin",
-                    step="menu"
-                )
-
-                return {
-                    "text": "Welcome.\n\nHow would you like to begin?",
-                    "keyboard": MAIN_MENU_EN
-                }
-
-            if "हिंदी" in text:
-
-                StateManager.update_session(
-                    user_id,
-                    language="hi",
-                    script="devanagari",
-                    step="menu"
-                )
-
-                return {
-                    "text": "नमस्ते।\n\nआप कैसे शुरू करना चाहेंगे?",
-                    "keyboard": MAIN_MENU_DEV
-                }
-
-            if "roman" in t or "hindi" in t:
-
+            if "roman" in t:
                 StateManager.update_session(
                     user_id,
                     language="hi",
                     script="roman",
                     step="menu"
                 )
+                return {
+                    "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
+                    "keyboard": MAIN_MENU_ROM
+                }
 
+            if "english" in t:
+                StateManager.update_session(
+                    user_id,
+                    language="en",
+                    script="latin",
+                    step="menu"
+                )
+                return {
+                    "text": "Welcome.\n\nHow would you like to begin?",
+                    "keyboard": MAIN_MENU_EN
+                }
+
+            if "हिंदी" in text:
+                StateManager.update_session(
+                    user_id,
+                    language="hi",
+                    script="devanagari",
+                    step="menu"
+                )
+                return {
+                    "text": "नमस्ते।\n\nआप कैसे शुरू करना चाहेंगे?",
+                    "keyboard": MAIN_MENU_DEV
+                }
+
+            if "hindi" in t:
+                StateManager.update_session(
+                    user_id,
+                    language="hi",
+                    script="roman",
+                    step="menu"
+                )
                 return {
                     "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
                     "keyboard": MAIN_MENU_ROM
@@ -185,12 +189,7 @@ class DialogEngine:
                 "keyboard": LANGUAGE_MENU
             }
 
-        # --------------------------------------------------
-        # MENU SELECTION
-        # --------------------------------------------------
-
         if session.step == "menu":
-
             t = text.lower()
 
             quick_selected = (
@@ -207,71 +206,28 @@ class DialogEngine:
             )
 
             if quick_selected:
-
                 StateManager.update_session(user_id, step="birthdata")
 
                 if language == "hi" and script == "devanagari":
-                    return (
-                        "आपका प्रश्न देखने के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
-                        "कृपया भेजें:\n"
-                        "जन्म तिथि\n"
-                        "जन्म समय\n"
-                        "जन्म स्थान"
-                    )
+                    return "कृपया अपनी जन्म जानकारी भेजें।"
 
                 if language == "hi" and script == "roman":
-                    return (
-                        "Aapka prashna dekhne ke liye mujhe aapki janm jaankari chahiye.\n\n"
-                        "Kripya bheje:\n"
-                        "Janm tareekh\n"
-                        "Janm samay\n"
-                        "Janm sthan"
-                    )
+                    return "Kripya apni janm jaankari bheje."
 
-                return (
-                    "To answer your question I need your birth details.\n\n"
-                    "Please send:\n"
-                    "Date of birth\n"
-                    "Time of birth\n"
-                    "Birth place"
-                )
+                return "Please send your birth details."
 
             if full_selected:
-
                 StateManager.update_session(user_id, step="birthdata")
 
                 if language == "hi" and script == "devanagari":
-                    return (
-                        "पूर्ण कुंडली विश्लेषण के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
-                        "कृपया भेजें:\n"
-                        "जन्म तिथि\n"
-                        "जन्म समय\n"
-                        "जन्म स्थान"
-                    )
+                    return "कृपया अपनी जन्म जानकारी भेजें।"
 
                 if language == "hi" and script == "roman":
-                    return (
-                        "Poori kundli vishleshan ke liye mujhe aapki janm jaankari chahiye.\n\n"
-                        "Kripya bheje:\n"
-                        "Janm tareekh\n"
-                        "Janm samay\n"
-                        "Janm sthan"
-                    )
+                    return "Kripya apni janm jaankari bheje."
 
-                return (
-                    "For a full birth chart reading I need your birth details.\n\n"
-                    "Please send:\n"
-                    "Date of birth\n"
-                    "Time of birth\n"
-                    "Birth place"
-                )
-
-        # --------------------------------------------------
-        # BIRTH DATA COLLECTION
-        # --------------------------------------------------
+                return "Please send your birth details."
 
         if session.step == "birthdata":
-
             parsed = BirthDataParser.parse_birth_data(text)
 
             dob = parsed.get("date")
@@ -279,11 +235,13 @@ class DialogEngine:
             place = parsed.get("place")
 
             if not dob or not tob or not place:
+                if language == "hi" and script == "roman":
+                    return "Kripya apni janm jaankari bheje."
 
                 if language == "hi":
-                    return "कृपया पूरी जन्म जानकारी भेजें।"
+                    return "कृपया अपनी जन्म जानकारी भेजें।"
 
-                return "Please send complete birth details."
+                return "Please send your birth details."
 
             StateManager.update_session(
                 user_id,
@@ -310,12 +268,7 @@ class DialogEngine:
                 "keyboard": DOMAIN_MENU_EN
             }
 
-        # --------------------------------------------------
-        # DOMAIN ANALYSIS + TIMING DETECTION
-        # --------------------------------------------------
-
         if session.step == "question":
-
             domain = IntentRouter.detect_domain(text)
 
             if not domain:
@@ -347,22 +300,13 @@ class DialogEngine:
             chart = DialogEngine.load_chart(user_id, session)
 
             if not getattr(session, "theme_shown", False):
-
                 opening = ConsultationEngine.build_opening(chart, language, script)
-
                 StateManager.update_session(user_id, theme_shown=True)
-
             else:
                 opening = None
 
-            domain_data = chart["domain_scores"].get(domain)
-
-            is_timing = TimingRouter.is_timing_question(text)
-
-            if is_timing:
-                domain_data["timing_focus"] = True
-            else:
-                domain_data["timing_focus"] = False
+            domain_data = chart.get("domain_scores", {}).get(domain, {})
+            domain_data["timing_focus"] = bool(TimingRouter.is_timing_question(text))
 
             prompt = AstrologerPrompts.build_domain_prompt(
                 domain,
@@ -374,7 +318,7 @@ class DialogEngine:
             )
 
             try:
-                reply = ask_ai("", prompt)
+                ai_output = ask_ai("", prompt)
             except Exception:
                 if language == "hi" and script == "roman":
                     return "Server se connection issue aa raha hai. Kripya thodi der baad phir se puchhe."
@@ -384,13 +328,23 @@ class DialogEngine:
 
                 return "I'm facing a temporary server connection issue. Please try again in a moment."
 
+            formatted_reply = AstrologyResponseTemplate.build_response(
+                domain=domain,
+                domain_data=domain_data,
+                ai_guidance=ai_output,
+                language=language,
+                script=script
+            )
+
+            # Apply localization after AI output and deterministic formatting.
             reply = PlanetTranslator.translate(
-                reply,
+                formatted_reply,
                 language,
                 script
             )
 
             if opening:
+                opening = PlanetTranslator.translate(opening, language, script)
                 reply = f"{opening}\n\n{reply}"
 
             MemoryEngine.add_bot_message(user_id, reply)
