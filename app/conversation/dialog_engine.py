@@ -14,6 +14,7 @@ from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.state_manager import StateManager
 from app.conversation.timing_router import TimingRouter
 from app.utils.birth_data_parser import BirthDataParser
+from app.utils.geo_resolver import GeoResolver
 
 
 LANGUAGE_MENU = {
@@ -78,9 +79,11 @@ DOMAIN_MENU_ROM = {
 
 class DialogEngine:
 
-    PHASE_BIRTHDATA = "PHASE_BIRTHDATA"
-    PHASE_DOMAIN_ANALYSIS = "PHASE_DOMAIN_ANALYSIS"
-    PHASE_CONSULTATION = "PHASE_CONSULTATION"
+    STAGE_BIRTHDATA = FollowupRouter.STAGE_BIRTHDATA
+    STAGE_CHART_READING = FollowupRouter.STAGE_CHART_READING
+    STAGE_SITUATION_ANALYSIS = FollowupRouter.STAGE_SITUATION_ANALYSIS
+    STAGE_STRATEGY_GUIDANCE = FollowupRouter.STAGE_STRATEGY_GUIDANCE
+    STAGE_ACTION_PLAN = FollowupRouter.STAGE_ACTION_PLAN
 
     @staticmethod
     def normalize_birth_data(session):
@@ -249,9 +252,6 @@ class DialogEngine:
 
     @staticmethod
     def load_chart(user_id, session):
-        lat = 28.6139
-        lon = 77.2090
-
         if session.chart_data:
             try:
                 return json.loads(session.chart_data)
@@ -259,7 +259,14 @@ class DialogEngine:
                 pass
 
         dob, time = DialogEngine.normalize_birth_data(session)
-        chart = ParashariEngine.generate_chart(dob, time, lat, lon)
+        lat, lon = GeoResolver.resolve(session.place)
+
+        chart = ParashariEngine.generate_chart(
+            dob,
+            time,
+            lat,
+            lon
+        )
 
         StateManager.update_session(
             user_id,
@@ -268,116 +275,87 @@ class DialogEngine:
         return chart
 
     @staticmethod
-    def _build_domain_reply(user_id, text, session, language, script, chart, domain):
-        domain_data = chart.get("domain_scores", {}).get(domain, {})
-        if not domain_data:
-            return DialogEngine._domain_not_detected(language, script)
+    def _build_stage_prompt(user_id, text, domain, domain_data, language, script, stage, focus):
+        if stage == DialogEngine.STAGE_CHART_READING:
+            base = AstrologerPrompts.build_domain_prompt(
+                domain=domain,
+                domain_data=domain_data,
+                language=language,
+                script=script,
+                user_id=user_id,
+                question=text
+            )
+        else:
+            base = FollowupRouter.build_followup_prompt(
+                domain=domain,
+                domain_data=domain_data,
+                language=language,
+                script=script,
+                user_id=user_id,
+                user_text=text,
+                stage=stage,
+                focus=focus
+            )
 
-        domain_data = dict(domain_data)
-        domain_data["timing_focus"] = bool(TimingRouter.is_timing_question(text))
-
-        prompt = AstrologerPrompts.build_domain_prompt(
-            domain=domain,
-            domain_data=domain_data,
-            language=language,
-            script=script,
-            user_id=user_id,
-            question=text
-        )
-        prompt = DialogEngine._to_structured_prompt(prompt, language, script)
-
-        raw_output = ask_ai("", prompt)
-        llm_fields = DialogEngine._parse_llm_fields(raw_output)
-
-        followup_question = FollowupRouter.get_initial_followup_question(
-            domain=domain,
-            language=language,
-            script=script
-        )
-
-        consultation_payload = ConsultationEngine.build_consultation_payload(
-            domain=domain,
-            domain_data=domain_data,
-            llm_fields=llm_fields,
-            language=language,
-            script=script,
-            followup_question=followup_question
-        )
-
-        consultation_payload = DialogEngine._translate_payload(
-            consultation_payload,
-            language,
-            script
-        )
-
-        reply = AstrologyResponseTemplate.build_response(consultation_payload)
-
-        reply, introduced_now = AstrologerPersona.apply_once(
-            reply=reply,
-            language=language,
-            script=script,
-            persona_introduced=bool(getattr(session, "persona_introduced", False))
-        )
-
-        StateManager.update_session(
-            user_id,
-            last_domain=domain,
-            conversation_phase=DialogEngine.PHASE_CONSULTATION,
-            last_followup_question=followup_question,
-            persona_introduced=(bool(getattr(session, "persona_introduced", False)) or introduced_now)
-        )
-
-        return reply
+        return DialogEngine._to_structured_prompt(base, language, script)
 
     @staticmethod
-    def _build_followup_reply(user_id, text, session, language, script, chart, domain):
+    def _build_consultation_reply(
+        user_id,
+        text,
+        session,
+        language,
+        script,
+        chart,
+        domain,
+        stage
+    ):
         domain_data = chart.get("domain_scores", {}).get(domain, {})
         if not domain_data:
-            return DialogEngine._domain_not_detected(language, script)
+            return DialogEngine._domain_not_detected(language, script), stage, getattr(session, "last_followup_question", None), False
 
         domain_data = dict(domain_data)
         domain_data["timing_focus"] = bool(TimingRouter.is_timing_question(text))
 
         focus = FollowupRouter.detect_followup_focus(domain, text)
-
-        prompt = FollowupRouter.build_deeper_prompt(
+        prompt = DialogEngine._build_stage_prompt(
+            user_id=user_id,
+            text=text,
             domain=domain,
             domain_data=domain_data,
             language=language,
             script=script,
-            user_id=user_id,
-            user_text=text,
+            stage=stage,
             focus=focus
         )
-        prompt = DialogEngine._to_structured_prompt(prompt, language, script)
 
-        raw_output = ask_ai("", prompt)
-        llm_fields = DialogEngine._parse_llm_fields(raw_output)
+        llm_fields = DialogEngine._parse_llm_fields(ask_ai("", prompt))
 
-        next_followup = FollowupRouter.get_next_followup_question(
-            domain=domain,
-            focus=focus,
-            language=language,
-            script=script,
-            previous_question=getattr(session, "last_followup_question", None)
-        )
+        if stage == DialogEngine.STAGE_CHART_READING:
+            followup_question = FollowupRouter.get_initial_followup_question(domain, language, script)
+        else:
+            next_stage = FollowupRouter.next_stage(stage)
+            followup_question = FollowupRouter.next_followup_question(
+                next_stage=next_stage,
+                language=language,
+                script=script,
+                previous_question=getattr(session, "last_followup_question", None)
+            )
 
-        consultation_payload = ConsultationEngine.build_consultation_payload(
+        payload = ConsultationEngine.build_consultation_payload(
             domain=domain,
             domain_data=domain_data,
             llm_fields=llm_fields,
             language=language,
             script=script,
-            followup_question=next_followup
+            followup_question=followup_question,
+            stage=stage
         )
 
-        consultation_payload = DialogEngine._translate_payload(
-            consultation_payload,
-            language,
-            script
-        )
+        # Planet translation after consultation text generation and before template assembly.
+        payload = DialogEngine._translate_payload(payload, language, script)
 
-        reply = AstrologyResponseTemplate.build_response(consultation_payload)
+        reply = AstrologyResponseTemplate.build_response(payload)
 
         reply, introduced_now = AstrologerPersona.apply_once(
             reply=reply,
@@ -386,15 +364,7 @@ class DialogEngine:
             persona_introduced=bool(getattr(session, "persona_introduced", False))
         )
 
-        StateManager.update_session(
-            user_id,
-            conversation_phase=DialogEngine.PHASE_CONSULTATION,
-            last_followup_question=next_followup,
-            last_domain=domain,
-            persona_introduced=(bool(getattr(session, "persona_introduced", False)) or introduced_now)
-        )
-
-        return reply
+        return reply, stage, followup_question, introduced_now
 
     @staticmethod
     def process(user_id, text, session):
@@ -403,7 +373,7 @@ class DialogEngine:
         session = StateManager.get_or_create_session(user_id)
         language, script = DialogEngine._language_values(session)
         step = getattr(session, "step", "start")
-        phase = getattr(session, "conversation_phase", None) or DialogEngine.PHASE_BIRTHDATA
+        stage = getattr(session, "conversation_phase", None) or DialogEngine.STAGE_BIRTHDATA
 
         if text == "/start":
             StateManager.update_session(
@@ -413,7 +383,7 @@ class DialogEngine:
                 script=None,
                 last_domain=None,
                 last_followup_question=None,
-                conversation_phase=DialogEngine.PHASE_BIRTHDATA,
+                conversation_phase=DialogEngine.STAGE_BIRTHDATA,
                 persona_introduced=False
             )
             return {
@@ -430,7 +400,7 @@ class DialogEngine:
                     language="hi",
                     script="roman",
                     step="menu",
-                    conversation_phase=DialogEngine.PHASE_BIRTHDATA
+                    conversation_phase=DialogEngine.STAGE_BIRTHDATA
                 )
                 return {
                     "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
@@ -443,7 +413,7 @@ class DialogEngine:
                     language="en",
                     script="latin",
                     step="menu",
-                    conversation_phase=DialogEngine.PHASE_BIRTHDATA
+                    conversation_phase=DialogEngine.STAGE_BIRTHDATA
                 )
                 return {
                     "text": "Welcome.\n\nHow would you like to begin?",
@@ -456,7 +426,7 @@ class DialogEngine:
                     language="hi",
                     script="devanagari",
                     step="menu",
-                    conversation_phase=DialogEngine.PHASE_BIRTHDATA
+                    conversation_phase=DialogEngine.STAGE_BIRTHDATA
                 )
                 return {
                     "text": "नमस्ते।\n\nआप कैसे शुरू करना चाहेंगे?",
@@ -469,7 +439,7 @@ class DialogEngine:
                     language="hi",
                     script="roman",
                     step="menu",
-                    conversation_phase=DialogEngine.PHASE_BIRTHDATA
+                    conversation_phase=DialogEngine.STAGE_BIRTHDATA
                 )
                 return {
                     "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
@@ -500,7 +470,7 @@ class DialogEngine:
                 StateManager.update_session(
                     user_id,
                     step="birthdata",
-                    conversation_phase=DialogEngine.PHASE_BIRTHDATA,
+                    conversation_phase=DialogEngine.STAGE_BIRTHDATA,
                     last_domain=None,
                     last_followup_question=None
                 )
@@ -527,7 +497,7 @@ class DialogEngine:
                 tob=tob,
                 place=place,
                 step="question",
-                conversation_phase=DialogEngine.PHASE_DOMAIN_ANALYSIS,
+                conversation_phase=DialogEngine.STAGE_BIRTHDATA,
                 last_domain=None,
                 last_followup_question=None
             )
@@ -546,52 +516,85 @@ class DialogEngine:
             try:
                 last_domain = getattr(session, "last_domain", None)
                 last_followup = getattr(session, "last_followup_question", None)
+                domain_from_text = IntentRouter.detect_domain(text)
 
-                if (
-                    phase == DialogEngine.PHASE_CONSULTATION
-                    and last_domain
-                    and FollowupRouter.is_followup_answer(text, last_followup, last_domain)
-                ):
-                    reply = DialogEngine._build_followup_reply(
-                        user_id=user_id,
-                        text=text,
-                        session=session,
-                        language=language,
-                        script=script,
-                        chart=chart,
-                        domain=last_domain
-                    )
-                else:
-                    domain = IntentRouter.detect_domain(text)
+                target_domain = None
+                target_stage = stage
 
-                    if not domain:
-                        if phase == DialogEngine.PHASE_CONSULTATION and last_domain:
-                            reply = DialogEngine._build_followup_reply(
-                                user_id=user_id,
-                                text=text,
-                                session=session,
-                                language=language,
-                                script=script,
-                                chart=chart,
-                                domain=last_domain
-                            )
-                        else:
+                if stage == DialogEngine.STAGE_BIRTHDATA:
+                    if not domain_from_text:
+                        return {
+                            "text": DialogEngine._domain_not_detected(language, script),
+                            "keyboard": DialogEngine._domain_menu(language, script)
+                        }
+                    target_domain = domain_from_text
+                    target_stage = DialogEngine.STAGE_CHART_READING
+
+                elif stage == DialogEngine.STAGE_CHART_READING:
+                    if domain_from_text and last_domain and domain_from_text != last_domain:
+                        target_domain = domain_from_text
+                        target_stage = DialogEngine.STAGE_CHART_READING
+                    else:
+                        target_domain = last_domain or domain_from_text
+                        if not target_domain:
                             return {
                                 "text": DialogEngine._domain_not_detected(language, script),
                                 "keyboard": DialogEngine._domain_menu(language, script)
                             }
-                    else:
-                        reply = DialogEngine._build_domain_reply(
-                            user_id=user_id,
-                            text=text,
-                            session=session,
-                            language=language,
-                            script=script,
-                            chart=chart,
-                            domain=domain
-                        )
+                        if FollowupRouter.is_followup_answer(text, last_followup, target_domain):
+                            target_stage = FollowupRouter.next_stage(DialogEngine.STAGE_CHART_READING)
+                        else:
+                            target_stage = FollowupRouter.next_stage(DialogEngine.STAGE_CHART_READING)
+
+                elif stage == DialogEngine.STAGE_SITUATION_ANALYSIS:
+                    target_domain = last_domain
+                    if not target_domain:
+                        return {
+                            "text": DialogEngine._domain_not_detected(language, script),
+                            "keyboard": DialogEngine._domain_menu(language, script)
+                        }
+                    target_stage = FollowupRouter.next_stage(DialogEngine.STAGE_SITUATION_ANALYSIS)
+
+                elif stage == DialogEngine.STAGE_STRATEGY_GUIDANCE:
+                    target_domain = last_domain
+                    if not target_domain:
+                        return {
+                            "text": DialogEngine._domain_not_detected(language, script),
+                            "keyboard": DialogEngine._domain_menu(language, script)
+                        }
+                    target_stage = FollowupRouter.next_stage(DialogEngine.STAGE_STRATEGY_GUIDANCE)
+
+                else:
+                    target_domain = last_domain
+                    if not target_domain:
+                        target_domain = domain_from_text
+                    if not target_domain:
+                        return {
+                            "text": DialogEngine._domain_not_detected(language, script),
+                            "keyboard": DialogEngine._domain_menu(language, script)
+                        }
+                    target_stage = DialogEngine.STAGE_ACTION_PLAN
+
+                reply, new_stage, new_followup_question, introduced_now = DialogEngine._build_consultation_reply(
+                    user_id=user_id,
+                    text=text,
+                    session=session,
+                    language=language,
+                    script=script,
+                    chart=chart,
+                    domain=target_domain,
+                    stage=target_stage
+                )
             except Exception:
                 return DialogEngine._service_error(language, script)
+
+            StateManager.update_session(
+                user_id,
+                last_domain=target_domain,
+                conversation_phase=new_stage,
+                last_followup_question=new_followup_question,
+                persona_introduced=(bool(getattr(session, "persona_introduced", False)) or introduced_now)
+            )
 
             MemoryEngine.add_bot_message(user_id, reply)
             return reply
