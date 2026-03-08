@@ -7,6 +7,7 @@ from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.intent_router import IntentRouter
 from app.conversation.timing_router import TimingRouter
+from app.conversation.followup_router import FollowupRouter
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.planet_translator import PlanetTranslator
 from app.utils.birth_data_parser import BirthDataParser
@@ -318,17 +319,30 @@ class DialogEngine:
             domain = IntentRouter.detect_domain(text)
 
             if not domain:
+                last_domain = getattr(session, "last_domain", None)
+                is_followup = FollowupRouter.is_followup(text)
 
-                if language == "hi":
+                if last_domain and is_followup:
+                    domain = last_domain
+                else:
+                    if language == "hi" and script == "roman":
+                        return {
+                            "text": "Kripya koi vishay chune ya apna prashna puchhe.",
+                            "keyboard": DOMAIN_MENU_ROM
+                        }
+
+                    if language == "hi":
+                        return {
+                            "text": "कृपया कोई विषय चुनें या अपना प्रश्न पूछें।",
+                            "keyboard": DOMAIN_MENU_DEV
+                        }
+
                     return {
-                        "text": "कृपया कोई विषय चुनें या अपना प्रश्न पूछें।",
-                        "keyboard": DOMAIN_MENU_DEV
+                        "text": "Choose a topic or ask your question.",
+                        "keyboard": DOMAIN_MENU_EN
                     }
 
-                return {
-                    "text": "Choose a topic or ask your question.",
-                    "keyboard": DOMAIN_MENU_EN
-                }
+            StateManager.update_session(user_id, last_domain=domain)
 
             chart = DialogEngine.load_chart(user_id, session)
 
@@ -359,7 +373,16 @@ class DialogEngine:
                 text
             )
 
-            reply = ask_ai("", prompt)
+            try:
+                reply = ask_ai("", prompt)
+            except Exception:
+                if language == "hi" and script == "roman":
+                    return "Server se connection issue aa raha hai. Kripya thodi der baad phir se puchhe."
+
+                if language == "hi":
+                    return "इस समय सर्वर से कनेक्शन में समस्या है। कृपया थोड़ी देर बाद फिर से पूछें।"
+
+                return "I'm facing a temporary server connection issue. Please try again in a moment."
 
             reply = PlanetTranslator.translate(
                 reply,
