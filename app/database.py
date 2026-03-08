@@ -35,6 +35,11 @@ class Session(Base):
     conversation_phase = Column(String)
     last_followup_question = Column(Text)
     persona_introduced = Column(Boolean, default=False)
+    age = Column(Integer)
+    life_stage = Column(String)
+    profiles = Column(Text)
+    pending_profile_name = Column(String)
+    active_profile_name = Column(String)
 
     chart_data = Column(Text)
 
@@ -63,6 +68,21 @@ def _ensure_schema_updates():
 
         if columns and "persona_introduced" not in columns:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN persona_introduced BOOLEAN DEFAULT 0"))
+
+        if columns and "age" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN age INTEGER"))
+
+        if columns and "life_stage" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN life_stage VARCHAR"))
+
+        if columns and "profiles" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN profiles TEXT"))
+
+        if columns and "pending_profile_name" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN pending_profile_name VARCHAR"))
+
+        if columns and "active_profile_name" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN active_profile_name VARCHAR"))
 
 
 Base.metadata.create_all(engine)

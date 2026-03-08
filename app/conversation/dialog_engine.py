@@ -8,11 +8,14 @@ from app.conversation.astrology_response_template import AstrologyResponseTempla
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.followup_router import FollowupRouter
 from app.conversation.intent_router import IntentRouter
+from app.conversation.life_stage_detector import LifeStageDetector
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.planet_translator import PlanetTranslator
+from app.conversation.profile_manager import ProfileManager
 from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.state_manager import StateManager
 from app.conversation.timing_router import TimingRouter
+from app.utils.age_calculator import AgeCalculator
 from app.utils.birth_data_parser import BirthDataParser
 from app.utils.geo_resolver import GeoResolver
 
@@ -47,6 +50,31 @@ MAIN_MENU_ROM = {
     "keyboard": [
         ["🔮 Turant Jyotish Prashna"],
         ["📜 Poori Kundli Vishleshan"]
+    ],
+    "resize_keyboard": True
+}
+
+
+PROFILE_SCOPE_MENU_EN = {
+    "keyboard": [
+        ["My Chart"],
+        ["Family Member"]
+    ],
+    "resize_keyboard": True
+}
+
+PROFILE_SCOPE_MENU_DEV = {
+    "keyboard": [
+        ["मेरी कुंडली"],
+        ["परिवार सदस्य"]
+    ],
+    "resize_keyboard": True
+}
+
+PROFILE_SCOPE_MENU_ROM = {
+    "keyboard": [
+        ["Meri Kundli"],
+        ["Family Member"]
     ],
     "resize_keyboard": True
 }
@@ -107,6 +135,14 @@ class DialogEngine:
         return MAIN_MENU_EN
 
     @staticmethod
+    def _profile_scope_menu(language, script):
+        if DialogEngine._is_hi_dev(language, script):
+            return PROFILE_SCOPE_MENU_DEV
+        if DialogEngine._is_hi_rom(language, script):
+            return PROFILE_SCOPE_MENU_ROM
+        return PROFILE_SCOPE_MENU_EN
+
+    @staticmethod
     def _domain_menu(language, script):
         if DialogEngine._is_hi_dev(language, script):
             return DOMAIN_MENU_DEV
@@ -130,7 +166,7 @@ class DialogEngine:
     def _birth_details_prompt(language, script):
         if DialogEngine._is_hi_dev(language, script):
             return (
-                "कृपया अपनी जन्म जानकारी भेजें:\n"
+                "कृपया जन्म जानकारी भेजें:\n"
                 "जन्म तिथि\n"
                 "जन्म समय\n"
                 "जन्म स्थान"
@@ -138,14 +174,14 @@ class DialogEngine:
 
         if DialogEngine._is_hi_rom(language, script):
             return (
-                "Kripya apni janm jaankari bheje:\n"
+                "Kripya janm jaankari bheje:\n"
                 "Janm tareekh\n"
                 "Janm samay\n"
                 "Janm sthan"
             )
 
         return (
-            "Please send your birth details:\n"
+            "Please send birth details:\n"
             "Date of birth\n"
             "Time of birth\n"
             "Birth place"
@@ -316,6 +352,9 @@ class DialogEngine:
 
         domain_data = dict(domain_data)
         domain_data["timing_focus"] = bool(TimingRouter.is_timing_question(text))
+        domain_data["age"] = getattr(session, "age", None)
+        domain_data["life_stage"] = getattr(session, "life_stage", None)
+        domain_data["current_dasha"] = chart.get("current_dasha", {})
 
         focus = FollowupRouter.detect_followup_focus(domain, text)
         prompt = DialogEngine._build_stage_prompt(
@@ -349,10 +388,14 @@ class DialogEngine:
             language=language,
             script=script,
             followup_question=followup_question,
-            stage=stage
+            stage=stage,
+            age=getattr(session, "age", None),
+            life_stage=getattr(session, "life_stage", None),
+            current_dasha=chart.get("current_dasha", {}),
+            transits=chart.get("transit", {})
         )
 
-        # Planet translation after consultation text generation and before template assembly.
+        # Planet translation after consultation text generation and before final reply.
         payload = DialogEngine._translate_payload(payload, language, script)
 
         reply = AstrologyResponseTemplate.build_response(payload)
@@ -384,7 +427,13 @@ class DialogEngine:
                 last_domain=None,
                 last_followup_question=None,
                 conversation_phase=DialogEngine.STAGE_BIRTHDATA,
-                persona_introduced=False
+                persona_introduced=False,
+                age=None,
+                life_stage=None,
+                profiles=ProfileManager.serialize_profiles([]),
+                pending_profile_name=None,
+                active_profile_name=None,
+                chart_data=None
             )
             return {
                 "text": "Please select your language\n\nकृपया अपनी भाषा चुनें",
@@ -469,17 +518,56 @@ class DialogEngine:
             if quick_selected or full_selected:
                 StateManager.update_session(
                     user_id,
-                    step="birthdata",
+                    step="profile_scope",
                     conversation_phase=DialogEngine.STAGE_BIRTHDATA,
                     last_domain=None,
-                    last_followup_question=None
+                    last_followup_question=None,
+                    pending_profile_name=None
                 )
-                return DialogEngine._birth_details_prompt(language, script)
+                return {
+                    "text": ProfileManager.declaration_prompt(language, script),
+                    "keyboard": DialogEngine._profile_scope_menu(language, script)
+                }
 
             return {
                 "text": DialogEngine._menu_retry(language, script),
                 "keyboard": DialogEngine._main_menu(language, script)
             }
+
+        if step == "profile_scope":
+            scope = ProfileManager.detect_profile_scope(text)
+
+            if scope == "self":
+                StateManager.update_session(
+                    user_id,
+                    step="birthdata",
+                    pending_profile_name=ProfileManager.default_profile_name(language, script)
+                )
+                return DialogEngine._birth_details_prompt(language, script)
+
+            if scope == "family":
+                StateManager.update_session(
+                    user_id,
+                    step="profile_name"
+                )
+                return ProfileManager.profile_name_prompt(language, script)
+
+            return {
+                "text": ProfileManager.declaration_prompt(language, script),
+                "keyboard": DialogEngine._profile_scope_menu(language, script)
+            }
+
+        if step == "profile_name":
+            profile_name = (text or "").strip()
+            if len(profile_name) < 2:
+                return ProfileManager.profile_name_prompt(language, script)
+
+            StateManager.update_session(
+                user_id,
+                pending_profile_name=profile_name,
+                step="birthdata"
+            )
+            return DialogEngine._birth_details_prompt(language, script)
 
         if step == "birthdata":
             parsed = BirthDataParser.parse_birth_data(text)
@@ -491,15 +579,46 @@ class DialogEngine:
             if not dob or not tob or not place:
                 return DialogEngine._birth_details_prompt(language, script)
 
+            age = AgeCalculator.calculate_age(dob)
+            life_stage = LifeStageDetector.detect(age)
+
+            profiles = ProfileManager.parse_profiles(getattr(session, "profiles", None))
+            profile_name = str(
+                getattr(session, "pending_profile_name", None)
+                or ProfileManager.default_profile_name(language, script)
+            ).strip()
+
+            max_profiles = ProfileManager.max_profiles(session)
+            profile_payload = {
+                "name": profile_name,
+                "dob": dob,
+                "tob": tob,
+                "place": place
+            }
+            profiles, _, limit_exceeded = ProfileManager.upsert_profile(
+                profiles=profiles,
+                profile=profile_payload,
+                limit=max_profiles
+            )
+
+            if limit_exceeded:
+                return ProfileManager.limit_message(language, script)
+
             StateManager.update_session(
                 user_id,
                 dob=dob,
                 tob=tob,
                 place=place,
+                age=age,
+                life_stage=life_stage,
+                profiles=ProfileManager.serialize_profiles(profiles),
+                active_profile_name=profile_name,
+                pending_profile_name=None,
                 step="question",
                 conversation_phase=DialogEngine.STAGE_BIRTHDATA,
                 last_domain=None,
-                last_followup_question=None
+                last_followup_question=None,
+                chart_data=None
             )
 
             return {
