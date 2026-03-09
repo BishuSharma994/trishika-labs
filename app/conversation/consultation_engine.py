@@ -17,6 +17,24 @@ class ConsultationEngine:
         return value if value else fallback
 
     @staticmethod
+    def prepare_consultation_context(domain_data, age, life_stage, current_dasha, transits, user_goal):
+        domain_data = dict(domain_data or {})
+        domain_data["age"] = age
+        domain_data["life_stage"] = life_stage
+        domain_data["current_dasha"] = current_dasha or {}
+        domain_data["transits"] = transits or {}
+        domain_data["user_goal"] = user_goal
+
+        return {
+            "prompt_domain_data": domain_data,
+            "age": age,
+            "life_stage": life_stage,
+            "current_dasha": current_dasha or {},
+            "transits": transits or {},
+            "user_goal": user_goal
+        }
+
+    @staticmethod
     def _life_stage_label(life_stage, language, script):
         if ConsultationEngine._is_hi_dev(language, script):
             mapping = {
@@ -79,7 +97,19 @@ class ConsultationEngine:
         return f"You are currently {age}, so a balanced long-term approach will serve you well."
 
     @staticmethod
-    def _observation(domain, llm_observation, language, script, stage, age, life_stage):
+    def _goal_line(user_goal, language, script):
+        goal = (user_goal or "").strip().replace("_", " ")
+        if not goal:
+            return ""
+
+        if ConsultationEngine._is_hi_dev(language, script):
+            return f"आपका मुख्य फोकस अभी {goal} पर है, इसलिए मार्गदर्शन उसी दिशा में रखा जा रहा है।"
+        if ConsultationEngine._is_hi_rom(language, script):
+            return f"Aapka main focus abhi {goal} par hai, isliye guidance isi direction mein rakhi ja rahi hai."
+        return f"Your current priority is {goal}, so the guidance is aligned to that goal."
+
+    @staticmethod
+    def _observation(domain, llm_observation, language, script, stage, age, life_stage, user_goal):
         if ConsultationEngine._is_hi_dev(language, script):
             stage_fallbacks = {
                 FollowupRouter.STAGE_CHART_READING: f"कुंडली संकेत देते हैं कि {domain} का विषय अभी सक्रिय है।",
@@ -105,11 +135,15 @@ class ConsultationEngine:
         fallback = stage_fallbacks.get(stage, stage_fallbacks[FollowupRouter.STAGE_CHART_READING])
         observation = ConsultationEngine._clean(llm_observation, fallback)
         life_stage_context = ConsultationEngine._life_stage_context(age, life_stage, language, script)
+        goal_line = ConsultationEngine._goal_line(user_goal, language, script)
 
+        parts = []
         if life_stage_context:
-            return f"{life_stage_context} {observation}".strip()
-
-        return observation
+            parts.append(life_stage_context)
+        if goal_line:
+            parts.append(goal_line)
+        parts.append(observation)
+        return " ".join(parts).strip()
 
     @staticmethod
     def _planetary_reasoning(primary_driver, llm_cause, language, script):
@@ -243,7 +277,19 @@ class ConsultationEngine:
         return fallback
 
     @staticmethod
-    def _practical_advice(risk_factor, llm_guidance, language, script, stage):
+    def _goal_advice_tail(user_goal, language, script):
+        goal = (user_goal or "").strip().replace("_", " ")
+        if not goal:
+            return ""
+
+        if ConsultationEngine._is_hi_dev(language, script):
+            return f"कदम ऐसे रखें जो सीधे {goal} के लक्ष्य को समर्थन दें।"
+        if ConsultationEngine._is_hi_rom(language, script):
+            return f"Steps aise rakhein jo seedhe {goal} ke goal ko support karein."
+        return f"Prioritize actions that directly support your {goal} goal."
+
+    @staticmethod
+    def _practical_advice(risk_factor, llm_guidance, language, script, stage, user_goal):
         risk = (risk_factor or "Unknown").strip() or "Unknown"
 
         if ConsultationEngine._is_hi_dev(language, script):
@@ -268,18 +314,31 @@ class ConsultationEngine:
             }.get(stage, "Maintain a balanced and practical approach.")
             caution = f"Avoid rushed decisions around {risk}. {stage_line}"
 
-        if llm_guidance and llm_guidance.strip():
-            return f"{caution} {llm_guidance.strip()}"
+        goal_tail = ConsultationEngine._goal_advice_tail(user_goal, language, script)
 
-        return caution
+        parts = [caution]
+        if goal_tail:
+            parts.append(goal_tail)
+        if llm_guidance and llm_guidance.strip():
+            parts.append(llm_guidance.strip())
+
+        return " ".join(parts).strip()
 
     @staticmethod
-    def _followup_question(followup_question, llm_followup, language, script):
+    def _followup_question(followup_question, llm_followup, language, script, user_goal):
         if followup_question and followup_question.strip():
             return followup_question.strip()
 
         if llm_followup and llm_followup.strip():
             return llm_followup.strip()
+
+        goal = (user_goal or "").strip().replace("_", " ")
+        if goal:
+            if ConsultationEngine._is_hi_dev(language, script):
+                return f"क्या आप चाहेंगे कि मैं {goal} के लिए अगले 30 दिनों का स्पष्ट कार्ययोजना दूँ?"
+            if ConsultationEngine._is_hi_rom(language, script):
+                return f"Kya aap chahenge ki main {goal} ke liye agle 30 din ka clear action plan doon?"
+            return f"Would you like a clear 30-day action plan for your {goal} goal?"
 
         if ConsultationEngine._is_hi_dev(language, script):
             return "क्या आप चाहेंगे कि मैं इसे आपके लिए अगले स्पष्ट कदमों में बाँट दूँ?"
@@ -299,7 +358,8 @@ class ConsultationEngine:
         age,
         life_stage,
         current_dasha,
-        transits
+        transits,
+        user_goal
     ):
         domain_data = domain_data or {}
         llm_fields = llm_fields or {}
@@ -316,7 +376,8 @@ class ConsultationEngine:
                 script=script,
                 stage=stage,
                 age=age,
-                life_stage=life_stage
+                life_stage=life_stage,
+                user_goal=user_goal
             ),
             "planetary_reasoning": ConsultationEngine._planetary_reasoning(
                 primary_driver=primary_driver,
@@ -339,12 +400,14 @@ class ConsultationEngine:
                 llm_guidance=llm_fields.get("guidance", ""),
                 language=language,
                 script=script,
-                stage=stage
+                stage=stage,
+                user_goal=user_goal
             ),
             "followup_question": ConsultationEngine._followup_question(
                 followup_question=followup_question,
                 llm_followup=llm_fields.get("followup", ""),
                 language=language,
-                script=script
+                script=script,
+                user_goal=user_goal
             )
         }

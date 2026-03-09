@@ -37,6 +37,8 @@ class Session(Base):
     persona_introduced = Column(Boolean, default=False)
     age = Column(Integer)
     life_stage = Column(String)
+    user_goal = Column(String)
+    plan_tier = Column(String, default="free")
     profiles = Column(Text)
     pending_profile_name = Column(String)
     active_profile_name = Column(String)
@@ -74,6 +76,12 @@ def _ensure_schema_updates():
 
         if columns and "life_stage" not in columns:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN life_stage VARCHAR"))
+
+        if columns and "user_goal" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN user_goal VARCHAR"))
+
+        if columns and "plan_tier" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN plan_tier VARCHAR DEFAULT 'free'"))
 
         if columns and "profiles" not in columns:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN profiles TEXT"))
