@@ -1,16 +1,18 @@
-from fastapi import FastAPI, Request
-import requests
-import os
 import json
-from dotenv import load_dotenv
+import logging
+import os
 
-from app.database import SessionLocal, Session
-from app.conversation.dialog_engine import DialogEngine
+import requests
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+
 from app.ai import ask_ai
+from app.conversation.dialog_engine import DialogEngine
 
 load_dotenv()
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 ASTRO_TOKEN = os.getenv("ASTRO_TOKEN")
 INTERVIEW_TOKEN = os.getenv("INTERVIEW_TOKEN")
@@ -50,37 +52,17 @@ async def telegram_webhook(bot_token: str, request: Request):
     # =====================================================
 
     if bot_token == ASTRO_TOKEN:
+        try:
+            result = DialogEngine.process(user_id, text, None)
 
-        db = SessionLocal()
-
-        # Always load fresh session
-        session = db.query(Session).filter(Session.user_id == user_id).first()
-
-        if not session:
-            session = Session(user_id=user_id, step="start")
-            db.add(session)
-            db.commit()
-
-            # reload newly created row
-            session = db.query(Session).filter(Session.user_id == user_id).first()
-
-        # -------------------------------------------------
-        # PROCESS MESSAGE
-        # -------------------------------------------------
-
-        result = DialogEngine.process(user_id, text, session)
-
-        # Reload session again to ensure latest updates
-        session = db.query(Session).filter(Session.user_id == user_id).first()
-
-        if isinstance(result, dict):
-            reply_text = result.get("text")
-            reply_keyboard = result.get("keyboard")
-        else:
-            reply_text = result
-
-        db.commit()
-        db.close()
+            if isinstance(result, dict):
+                reply_text = result.get("text")
+                reply_keyboard = result.get("keyboard")
+            else:
+                reply_text = result
+        except Exception:
+            logger.exception("Astrology webhook processing failed for user_id=%s", user_id)
+            reply_text = "I'm facing a temporary server issue. Please try again in a moment."
 
     # =====================================================
     # INTERVIEW BOT

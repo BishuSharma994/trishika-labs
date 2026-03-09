@@ -5,6 +5,7 @@ from app.ai import ask_ai
 from app.astro_engine import ParashariEngine
 from app.conversation.astrology_response_template import AstrologyResponseTemplate
 from app.conversation.consultation_engine import ConsultationEngine
+from app.conversation.followup_router import FollowupRouter
 from app.conversation.intent_router import IntentRouter
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.planet_translator import PlanetTranslator
@@ -441,7 +442,11 @@ class DialogEngine:
 
             if not domain:
                 last_domain = getattr(session, "last_domain", None)
-                is_followup = FollowupRouter.is_followup(text)
+                is_followup = FollowupRouter.is_followup_answer(
+                    text,
+                    getattr(session, "last_followup_question", None),
+                    last_domain
+                )
 
                 if last_domain and is_followup:
                     domain = last_domain
@@ -505,7 +510,7 @@ class DialogEngine:
             )
 
             # Apply localization after AI output and deterministic formatting.
-            reply = PlanetTranslator.translate(
+            translated_reply = PlanetTranslator.translate(
                 formatted_reply,
                 language,
                 script
