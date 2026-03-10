@@ -38,9 +38,6 @@ class StateManager:
         try:
             session = db.query(Session).filter(Session.user_id == user_id).first()
 
-        try:
-            session = db.query(Session).filter(Session.user_id == user_id).first()
-
             if not session:
                 session = Session(user_id=user_id, step="start")
                 db.add(session)
