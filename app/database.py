@@ -30,6 +30,8 @@ class Session(Base):
     language = Column(String)
 
     script = Column(String)
+    language_mode = Column(String)
+    language_confirmed = Column(Boolean, default=False)
 
     last_domain = Column(String)
     conversation_phase = Column(String)
@@ -91,6 +93,12 @@ def _ensure_schema_updates():
 
         if columns and "active_profile_name" not in columns:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN active_profile_name VARCHAR"))
+
+        if columns and "language_mode" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN language_mode VARCHAR"))
+
+        if columns and "language_confirmed" not in columns:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN language_confirmed BOOLEAN DEFAULT 0"))
 
 
 Base.metadata.create_all(engine)

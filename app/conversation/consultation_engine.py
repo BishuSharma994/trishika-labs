@@ -1034,7 +1034,7 @@ class ConsultationEngine:
             observation = f"{config['display'].title()} trend is mixed but workable with structured decisions."
 
         signal_line = (
-            f"I am filtering only {signal_config['houses']} with {', '.join(signal_config['planets'])}. "
+            f"For this question, I am reading {signal_config['houses']} with {', '.join(signal_config['planets'])}. "
             f"Current lead influence is {driver}, and caution zone is {risk}."
         )
 
@@ -1053,9 +1053,9 @@ class ConsultationEngine:
         if timing_flag:
             window_open = bool((chart or {}).get(timing_flag))
             if window_open:
-                timing_line = f"{timing_line} Domain activation window is currently supportive."
+                timing_line = f"{timing_line} This period looks comparatively supportive for this area."
             else:
-                timing_line = f"{timing_line} Domain activation window is not fully open yet."
+                timing_line = f"{timing_line} This period needs more patience before major moves."
 
         return {
             "observation": observation,
@@ -1106,7 +1106,7 @@ class ConsultationEngine:
         concern_line = f"You just added this concern: '{concern}'. " if concern else ""
 
         text = (
-            f"Using the same cached {domain} chart insight, here is practical guidance for your current track. "
+            f"Based on your chart indicators for {domain}, here is practical guidance for your current track. "
             f"Since you are {status_label}, keep actions aligned with {insight['driver']} patterns and avoid reactive decisions linked to {insight['risk']}. "
             f"{concern_line}"
             "In the next few weeks, focus on one measurable step, one communication correction, and one timing-aware decision. "
