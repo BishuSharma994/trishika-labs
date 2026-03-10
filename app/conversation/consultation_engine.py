@@ -1,3 +1,5 @@
+import re
+
 from app.conversation.life_theme_detector import LifeThemeDetector
 
 
@@ -7,6 +9,8 @@ class ConsultationEngine:
     STAGE_STRATEGY_GUIDANCE = "STAGE_STRATEGY_GUIDANCE"
     STAGE_ACTION_PLAN = "STAGE_ACTION_PLAN"
 
+    MAX_RESPONSE_SENTENCES = 10
+
     @staticmethod
     def _is_hi_dev(language, script):
         return language == "hi" and script == "devanagari"
@@ -14,6 +18,16 @@ class ConsultationEngine:
     @staticmethod
     def _is_hi_rom(language, script):
         return language == "hi" and script == "roman"
+
+    @staticmethod
+    def _persona_intro(language, script):
+        if ConsultationEngine._is_hi_dev(language, script):
+            return "मैं आचार्य आर्यव्रत आपकी कुंडली देखकर कह सकता हूँ कि इस दिशा में स्पष्ट संकेत दिखाई दे रहे हैं।"
+
+        if ConsultationEngine._is_hi_rom(language, script):
+            return "Main Acharya Aryavrat aapki kundli dekh kar keh sakta hoon ki is disha mein spasht sanket dikh rahe hain."
+
+        return "I am Acharya Aryavrat, and from your chart I can see clear indications in this direction."
 
     @staticmethod
     def prepare_consultation_context(domain_data, age, life_stage, current_dasha, transits, user_goal):
@@ -354,7 +368,87 @@ class ConsultationEngine:
         return mapping.get(stage, "Would you like to go deeper in this area?")
 
     @staticmethod
-    def generate(
+    def _split_sentences(text):
+        raw = str(text or "").strip()
+        if not raw:
+            return []
+
+        compact = re.sub(r"\s+", " ", raw)
+        chunks = re.split(r"(?<=[.!?।])\s+|(?<=;)\s+", compact)
+        result = []
+
+        for chunk in chunks:
+            cleaned = chunk.strip()
+            if cleaned:
+                result.append(cleaned)
+
+        if result:
+            return result
+
+        return [compact]
+
+    @staticmethod
+    def _normalize_sentence_key(sentence):
+        lowered = str(sentence or "").strip().lower()
+        lowered = re.sub(r"[^\w\u0900-\u097f\s]", " ", lowered)
+        lowered = re.sub(r"\s+", " ", lowered).strip()
+        return lowered
+
+    @staticmethod
+    def _ensure_terminal_punctuation(sentence):
+        s = str(sentence or "").strip()
+        if not s:
+            return ""
+
+        if s.endswith((".", "!", "?", "।")):
+            return s
+
+        return f"{s}."
+
+    @staticmethod
+    def _compose_response(
+        persona_intro,
+        life_stage_text,
+        astrology_reasoning,
+        timing_text,
+        advice_text,
+        followup_question,
+    ):
+        sections = [
+            (persona_intro, 1),
+            (life_stage_text, 2),
+            (astrology_reasoning, 3),
+            (timing_text, 2),
+            (advice_text, 1),
+            (followup_question, 1),
+        ]
+
+        sentences = []
+        seen = set()
+
+        for section_text, limit in sections:
+            if len(sentences) >= ConsultationEngine.MAX_RESPONSE_SENTENCES:
+                break
+
+            added = 0
+            for sentence in ConsultationEngine._split_sentences(section_text):
+                key = ConsultationEngine._normalize_sentence_key(sentence)
+                if not key or key in seen:
+                    continue
+
+                seen.add(key)
+                sentences.append(ConsultationEngine._ensure_terminal_punctuation(sentence))
+                added += 1
+
+                if len(sentences) >= ConsultationEngine.MAX_RESPONSE_SENTENCES:
+                    break
+                if added >= limit:
+                    break
+
+        return " ".join(sentences).strip()
+
+    @staticmethod
+    def generate_response(
         domain,
         domain_data,
         language,
@@ -365,12 +459,20 @@ class ConsultationEngine:
         user_goal,
         current_dasha,
         transits,
-        followup_question=None,
-        persona_intro="",
-        opening_text="",
+        persona_introduced=False,
+        chart=None,
+        theme_shown=False,
     ):
         domain_data = domain_data or {}
         primary_driver = str(domain_data.get("primary_driver") or "").strip() or "Saturn"
+
+        persona_intro = ""
+        if not persona_introduced:
+            persona_intro = ConsultationEngine._persona_intro(language, script)
+
+        opening_text = ""
+        if not theme_shown:
+            opening_text = ConsultationEngine.build_opening(chart or {}, language, script)
 
         life_stage_parts = [
             ConsultationEngine._stage_bridge(stage, language, script),
@@ -382,12 +484,11 @@ class ConsultationEngine:
         ).strip()
 
         reasoning_parts = []
-        if opening_text and opening_text.strip():
-            reasoning_parts.append(opening_text.strip())
+        if opening_text:
+            reasoning_parts.append(opening_text)
         reasoning_parts.append(
             ConsultationEngine._chart_reasoning(domain, domain_data, language, script, stage)
         )
-
         astrology_reasoning = " ".join(
             part.strip() for part in reasoning_parts if part and part.strip()
         ).strip()
@@ -402,18 +503,25 @@ class ConsultationEngine:
         )
 
         advice_text = ConsultationEngine._practical_advice(language, script, user_goal, stage)
-        resolved_followup = followup_question or ConsultationEngine.default_followup_question(
+        followup_question = ConsultationEngine.default_followup_question(
             domain,
             language,
             script,
             stage,
         )
 
+        final_text = ConsultationEngine._compose_response(
+            persona_intro,
+            life_stage_text,
+            astrology_reasoning,
+            timing_text,
+            advice_text,
+            followup_question,
+        )
+
         return {
-            "persona_intro": str(persona_intro or "").strip(),
-            "life_stage_text": life_stage_text,
-            "astrology_reasoning": astrology_reasoning,
-            "timing_text": timing_text,
-            "advice_text": advice_text,
-            "followup_question": resolved_followup,
+            "text": final_text,
+            "followup_question": followup_question,
+            "persona_added": bool(persona_intro),
+            "theme_used": bool(opening_text),
         }

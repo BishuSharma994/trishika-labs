@@ -1,16 +1,12 @@
 import json
 from datetime import datetime
 
-from app.ai import ask_ai
 from app.astro_engine import ParashariEngine
-from app.conversation.astrologer_persona import AstrologerPersona
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.intent_router import IntentRouter
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.planet_translator import PlanetTranslator
 from app.conversation.profile_manager import ProfileManager
-from app.conversation.prompt_builder import AstrologerPrompts
-from app.conversation.response_assembler import ResponseAssembler
 from app.conversation.state_manager import StateManager
 from app.conversation.timing_router import TimingRouter
 from app.conversation.life_stage_detector import detect as detect_life_stage
@@ -509,6 +505,7 @@ class DialogEngine:
             language, script = DialogEngine._coerce_language_script(session, text)
             domain = IntentRouter.detect_domain(text)
             last_domain = getattr(session, "last_domain", None)
+            domain_switched = False
             current_stage = (
                 getattr(session, "conversation_phase", None)
                 or ConsultationEngine.STAGE_CHART_READING
@@ -517,6 +514,7 @@ class DialogEngine:
             if domain:
                 if last_domain != domain:
                     current_stage = ConsultationEngine.STAGE_CHART_READING
+                    domain_switched = True
             else:
                 if not last_domain:
                     return {
@@ -537,26 +535,7 @@ class DialogEngine:
             current_dasha = chart.get("current_dasha", {})
             transits = chart.get("transit", {})
 
-            opening_text = ""
-            if not getattr(session, "theme_shown", False):
-                opening_text = ConsultationEngine.build_opening(chart, language, script)
-
-            persona_intro, persona_added = AstrologerPersona.apply_once(
-                "",
-                language,
-                script,
-                bool(getattr(session, "persona_introduced", False)),
-            )
-            persona_intro = str(persona_intro or "").strip()
-
-            followup_question = ConsultationEngine.default_followup_question(
-                domain,
-                language,
-                script,
-                current_stage,
-            )
-
-            consultation = ConsultationEngine.generate(
+            consultation = ConsultationEngine.generate_response(
                 domain=domain,
                 domain_data=domain_data,
                 language=language,
@@ -567,55 +546,12 @@ class DialogEngine:
                 user_goal=effective_goal,
                 current_dasha=current_dasha,
                 transits=transits,
-                followup_question=followup_question,
-                persona_intro=persona_intro,
-                opening_text=opening_text,
+                persona_introduced=bool(getattr(session, "persona_introduced", False)),
+                chart=chart,
+                theme_shown=bool(getattr(session, "theme_shown", False)) and not domain_switched,
             )
 
-            consultation_context = ConsultationEngine.prepare_consultation_context(
-                domain_data=domain_data,
-                age=getattr(session, "age", None),
-                life_stage=getattr(session, "life_stage", None),
-                current_dasha=current_dasha,
-                transits=transits,
-                user_goal=effective_goal,
-            )
-
-            prompt = AstrologerPrompts.build_domain_prompt(
-                domain,
-                consultation_context["prompt_domain_data"],
-                language,
-                script,
-                user_id,
-                text,
-                structured_context=consultation,
-            )
-
-            try:
-                llm_text = ask_ai("", prompt)
-            except Exception:
-                if DialogEngine._is_hi_rom(language, script):
-                    return "Server se connection issue aa raha hai. Kripya thodi der baad phir se puchhe."
-
-                if DialogEngine._is_hi_dev(language, script):
-                    return "इस समय सर्वर से कनेक्शन में समस्या है। कृपया थोड़ी देर बाद फिर से पूछें।"
-
-                return "I'm facing a temporary server connection issue. Please try again in a moment."
-
-            reply = ResponseAssembler.assemble_response(
-                consultation["persona_intro"],
-                consultation["life_stage_text"],
-                consultation["astrology_reasoning"],
-                consultation["timing_text"],
-                consultation["advice_text"],
-                llm_text,
-            )
-
-            followup_text = str(consultation.get("followup_question") or "").strip()
-            followup_key = followup_text.lower().rstrip("?.! ")
-            if followup_text and followup_key and followup_key not in reply.lower():
-                reply = f"{reply} {followup_text}".strip()
-
+            reply = consultation.get("text", "")
             reply = PlanetTranslator.translate(reply, language, script)
 
             next_stage = ConsultationEngine.next_stage(current_stage)
@@ -626,7 +562,7 @@ class DialogEngine:
                 last_followup_question=consultation.get("followup_question"),
                 theme_shown=True,
                 persona_introduced=bool(getattr(session, "persona_introduced", False))
-                or persona_added,
+                or bool(consultation.get("persona_added")),
                 user_goal=effective_goal,
             )
 
