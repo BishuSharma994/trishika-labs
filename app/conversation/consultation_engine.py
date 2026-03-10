@@ -1,7 +1,11 @@
-from app.conversation.followup_router import FollowupRouter
+from app.conversation.life_theme_detector import LifeThemeDetector
 
 
 class ConsultationEngine:
+    STAGE_CHART_READING = "STAGE_CHART_READING"
+    STAGE_SITUATION_ANALYSIS = "STAGE_SITUATION_ANALYSIS"
+    STAGE_STRATEGY_GUIDANCE = "STAGE_STRATEGY_GUIDANCE"
+    STAGE_ACTION_PLAN = "STAGE_ACTION_PLAN"
 
     @staticmethod
     def _is_hi_dev(language, script):
@@ -12,402 +16,371 @@ class ConsultationEngine:
         return language == "hi" and script == "roman"
 
     @staticmethod
-    def _clean(text, fallback):
-        value = (text or "").strip()
-        return value if value else fallback
-
-    @staticmethod
     def prepare_consultation_context(domain_data, age, life_stage, current_dasha, transits, user_goal):
-        domain_data = dict(domain_data or {})
-        domain_data["age"] = age
-        domain_data["life_stage"] = life_stage
-        domain_data["current_dasha"] = current_dasha or {}
-        domain_data["transits"] = transits or {}
-        domain_data["user_goal"] = user_goal
+        payload = dict(domain_data or {})
+        payload["age"] = age
+        payload["life_stage"] = life_stage
+        payload["current_dasha"] = current_dasha or {}
+        payload["transits"] = transits or {}
+        payload["user_goal"] = user_goal
 
         return {
-            "prompt_domain_data": domain_data,
+            "prompt_domain_data": payload,
             "age": age,
             "life_stage": life_stage,
             "current_dasha": current_dasha or {},
             "transits": transits or {},
-            "user_goal": user_goal
+            "user_goal": user_goal,
         }
+
+    @staticmethod
+    def next_stage(current_stage):
+        if current_stage == ConsultationEngine.STAGE_CHART_READING:
+            return ConsultationEngine.STAGE_SITUATION_ANALYSIS
+
+        if current_stage == ConsultationEngine.STAGE_SITUATION_ANALYSIS:
+            return ConsultationEngine.STAGE_STRATEGY_GUIDANCE
+
+        if current_stage == ConsultationEngine.STAGE_STRATEGY_GUIDANCE:
+            return ConsultationEngine.STAGE_ACTION_PLAN
+
+        return ConsultationEngine.STAGE_ACTION_PLAN
+
+    @staticmethod
+    def build_opening(chart, language, script):
+        dominant = LifeThemeDetector.detect(chart or {})
+
+        if not dominant:
+            return ""
+
+        if ConsultationEngine._is_hi_dev(language, script):
+            names = {
+                "career": "करियर",
+                "finance": "धन",
+                "marriage": "विवाह",
+                "health": "स्वास्थ्य",
+            }
+            return f"आपकी कुंडली का मुख्य सक्रिय विषय अभी {names.get(dominant, dominant)} है।"
+
+        if ConsultationEngine._is_hi_rom(language, script):
+            names = {
+                "career": "career",
+                "finance": "paisa",
+                "marriage": "shaadi",
+                "health": "health",
+            }
+            return f"Aapki kundli ka main active theme abhi {names.get(dominant, dominant)} hai."
+
+        return f"Your chart's most active life theme right now is {dominant}."
 
     @staticmethod
     def _life_stage_label(life_stage, language, script):
         if ConsultationEngine._is_hi_dev(language, script):
-            mapping = {
-                "childhood_phase": "सीखने और बुनियाद मजबूत करने का चरण",
-                "early_adulthood": "दिशा तय करने और अवसर पहचानने का चरण",
-                "career_building": "कैरियर निर्माण और कौशल विस्तार का चरण",
-                "career_expansion": "कैरियर विस्तार और जिम्मेदारी बढ़ने का चरण",
-                "leadership_phase": "नेतृत्व और स्थिरता का चरण",
-                "legacy_phase": "अनुभव साझा करने और विरासत बनाने का चरण"
+            labels = {
+                "childhood_phase": "सीखने और बुनियाद बनाने का समय",
+                "early_adulthood": "दिशा तय करने का समय",
+                "career_building": "कैरियर निर्माण का समय",
+                "career_expansion": "कैरियर विस्तार का समय",
+                "leadership_phase": "नेतृत्व और स्थिरता का समय",
+                "legacy_phase": "अनुभव से विरासत बनाने का समय",
             }
         elif ConsultationEngine._is_hi_rom(language, script):
-            mapping = {
-                "childhood_phase": "seekhne aur buniyad majboot karne ka phase",
-                "early_adulthood": "direction set karne aur opportunities pehchanne ka phase",
-                "career_building": "career build karne aur skills badhane ka phase",
-                "career_expansion": "career expansion aur zimmedari badhne ka phase",
-                "leadership_phase": "leadership aur stability ka phase",
-                "legacy_phase": "anubhav share karne aur legacy banane ka phase"
+            labels = {
+                "childhood_phase": "seekhne aur buniyad banane ka samay",
+                "early_adulthood": "direction set karne ka samay",
+                "career_building": "career build karne ka samay",
+                "career_expansion": "career expansion ka samay",
+                "leadership_phase": "leadership aur stability ka samay",
+                "legacy_phase": "experience se legacy banane ka samay",
             }
         else:
-            mapping = {
+            labels = {
                 "childhood_phase": "a foundational learning phase",
                 "early_adulthood": "a direction-setting phase",
                 "career_building": "a career-building phase",
                 "career_expansion": "a career-expansion phase",
                 "leadership_phase": "a leadership and stability phase",
-                "legacy_phase": "a legacy-focused phase"
+                "legacy_phase": "a legacy-focused phase",
             }
 
-        return mapping.get(life_stage, "")
+        return labels.get(life_stage, "")
 
     @staticmethod
     def _life_stage_context(age, life_stage, language, script):
         stage_label = ConsultationEngine._life_stage_label(life_stage, language, script)
 
         if ConsultationEngine._is_hi_dev(language, script):
-            if age is None and not stage_label:
-                return ""
-            if age is None:
-                return f"जीवन का यह समय {stage_label} के रूप में काम करता है।"
+            if age:
+                if stage_label:
+                    return f"आपकी उम्र अभी {age} वर्ष है और यह {stage_label} है।"
+                return f"आपकी उम्र अभी {age} वर्ष है, इसलिए निर्णयों में दीर्घकालिक सोच रखना बेहतर रहेगा।"
+
             if stage_label:
-                return f"आपकी उम्र अभी {age} वर्ष है और यह {stage_label} माना जाता है।"
-            return f"आपकी उम्र अभी {age} वर्ष है, इसलिए निर्णयों में संतुलित और दीर्घकालिक दृष्टि रखना उपयोगी रहेगा।"
+                return f"यह समय {stage_label} माना जाता है।"
+
+            return ""
 
         if ConsultationEngine._is_hi_rom(language, script):
-            if age is None and not stage_label:
-                return ""
-            if age is None:
-                return f"Jeevan ka yeh samay aam taur par {stage_label} maana jata hai."
-            if stage_label:
-                return f"Aapki umr abhi {age} saal hai aur yeh {stage_label} hota hai."
-            return f"Aapki umr abhi {age} saal hai, isliye balanced aur long-term nazariya rakhna faydemand rahega."
+            if age:
+                if stage_label:
+                    return f"Aapki age abhi {age} saal hai aur yeh {stage_label} hai."
+                return f"Aapki age abhi {age} saal hai, isliye decisions mein long-term soch faydemand rahegi."
 
-        if age is None and not stage_label:
+            if stage_label:
+                return f"Yeh samay aam taur par {stage_label} hota hai."
+
             return ""
-        if age is None:
-            return f"This stage of life is typically {stage_label}."
+
+        if age:
+            if stage_label:
+                return f"You are currently {age}, which is usually {stage_label}."
+            return f"You are currently {age}, so long-term planning will help more than reactive decisions."
+
         if stage_label:
-            return f"You are currently {age}, and this is usually {stage_label}."
-        return f"You are currently {age}, so a balanced long-term approach will serve you well."
+            return f"This period is usually {stage_label}."
+
+        return ""
 
     @staticmethod
-    def _goal_line(user_goal, language, script):
+    def _stage_bridge(stage, language, script):
+        if ConsultationEngine._is_hi_dev(language, script):
+            mapping = {
+                ConsultationEngine.STAGE_CHART_READING: "पहले मैं कुंडली के मुख्य संकेत स्पष्ट करता हूँ।",
+                ConsultationEngine.STAGE_SITUATION_ANALYSIS: "अब हम आपकी मौजूदा स्थिति पर फोकस करके इसे लागू करते हैं।",
+                ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "अब इस संकेत को रणनीति में बदलते हैं।",
+                ConsultationEngine.STAGE_ACTION_PLAN: "अब इसे अगले व्यावहारिक कदमों में बदलते हैं।",
+            }
+            return mapping.get(stage, "")
+
+        if ConsultationEngine._is_hi_rom(language, script):
+            mapping = {
+                ConsultationEngine.STAGE_CHART_READING: "Pehle main kundli ke main sanket clear karta hoon.",
+                ConsultationEngine.STAGE_SITUATION_ANALYSIS: "Ab hum aapki current situation par focus karke ise apply karte hain.",
+                ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "Ab is sanket ko strategy mein convert karte hain.",
+                ConsultationEngine.STAGE_ACTION_PLAN: "Ab ise next practical steps mein convert karte hain.",
+            }
+            return mapping.get(stage, "")
+
+        mapping = {
+            ConsultationEngine.STAGE_CHART_READING: "Let me first anchor this in your core chart signal.",
+            ConsultationEngine.STAGE_SITUATION_ANALYSIS: "Now let's apply that signal to your present situation.",
+            ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "Now we convert that signal into strategy.",
+            ConsultationEngine.STAGE_ACTION_PLAN: "Now we convert this into practical next steps.",
+        }
+        return mapping.get(stage, "")
+
+    @staticmethod
+    def _goal_context(user_goal, language, script):
         goal = (user_goal or "").strip().replace("_", " ")
         if not goal:
             return ""
 
         if ConsultationEngine._is_hi_dev(language, script):
-            return f"आपका मुख्य फोकस अभी {goal} पर है, इसलिए मार्गदर्शन उसी दिशा में रखा जा रहा है।"
+            return f"आपका मुख्य लक्ष्य अभी {goal} है, इसलिए सलाह उसी दिशा में रखी जा रही है।"
+
         if ConsultationEngine._is_hi_rom(language, script):
-            return f"Aapka main focus abhi {goal} par hai, isliye guidance isi direction mein rakhi ja rahi hai."
-        return f"Your current priority is {goal}, so the guidance is aligned to that goal."
+            return f"Aapka main goal abhi {goal} hai, isliye guidance isi direction mein rakhi ja rahi hai."
+
+        return f"Your primary goal right now is {goal}, so the guidance is aligned to it."
 
     @staticmethod
-    def _observation(domain, llm_observation, language, script, stage, age, life_stage, user_goal):
-        if ConsultationEngine._is_hi_dev(language, script):
-            stage_fallbacks = {
-                FollowupRouter.STAGE_CHART_READING: f"कुंडली संकेत देते हैं कि {domain} का विषय अभी सक्रिय है।",
-                FollowupRouter.STAGE_SITUATION_ANALYSIS: f"आपकी वर्तमान स्थिति में {domain} का प्रभाव अधिक स्पष्ट रूप से सामने आ रहा है।",
-                FollowupRouter.STAGE_STRATEGY_GUIDANCE: f"अब {domain} में रणनीतिक कदम लेना आपके लिए अधिक लाभकारी रहेगा।",
-                FollowupRouter.STAGE_ACTION_PLAN: f"अब {domain} के लिए व्यावहारिक और क्रमबद्ध कदम तय करने का समय है।"
-            }
-        elif ConsultationEngine._is_hi_rom(language, script):
-            stage_fallbacks = {
-                FollowupRouter.STAGE_CHART_READING: f"Kundli sanket dete hain ki {domain} ka vishay abhi active hai.",
-                FollowupRouter.STAGE_SITUATION_ANALYSIS: f"Aapki current situation mein {domain} ka prabhav ab zyada clear dikh raha hai.",
-                FollowupRouter.STAGE_STRATEGY_GUIDANCE: f"Ab {domain} mein strategy-based steps lena aapke liye zyada faydemand rahega.",
-                FollowupRouter.STAGE_ACTION_PLAN: f"Ab {domain} ke liye practical aur step-wise action plan banana sahi rahega."
-            }
-        else:
-            stage_fallbacks = {
-                FollowupRouter.STAGE_CHART_READING: f"Your chart shows that {domain} is currently an active life theme.",
-                FollowupRouter.STAGE_SITUATION_ANALYSIS: f"In your present situation, {domain} is becoming more directly influential.",
-                FollowupRouter.STAGE_STRATEGY_GUIDANCE: f"At this point, a strategy-led approach in {domain} will help most.",
-                FollowupRouter.STAGE_ACTION_PLAN: f"This is the right time to turn your {domain} insight into practical actions."
-            }
-
-        fallback = stage_fallbacks.get(stage, stage_fallbacks[FollowupRouter.STAGE_CHART_READING])
-        observation = ConsultationEngine._clean(llm_observation, fallback)
-        life_stage_context = ConsultationEngine._life_stage_context(age, life_stage, language, script)
-        goal_line = ConsultationEngine._goal_line(user_goal, language, script)
-
-        parts = []
-        if life_stage_context:
-            parts.append(life_stage_context)
-        if goal_line:
-            parts.append(goal_line)
-        parts.append(observation)
-        return " ".join(parts).strip()
-
-    @staticmethod
-    def _planetary_reasoning(primary_driver, llm_cause, language, script):
-        driver = (primary_driver or "Unknown").strip() or "Unknown"
+    def _chart_reasoning(domain, domain_data, language, script, stage):
+        primary_driver = str(domain_data.get("primary_driver") or "").strip() or "Saturn"
+        risk_factor = str(domain_data.get("risk_factor") or "").strip() or "impulsive decisions"
+        momentum = str(domain_data.get("momentum") or "").strip() or "Neutral"
 
         if ConsultationEngine._is_hi_dev(language, script):
-            fallback = f"इस विषय की दिशा पर अभी {driver} का प्रभाव सबसे अधिक दिखाई दे रहा है।"
-        elif ConsultationEngine._is_hi_rom(language, script):
-            fallback = f"Is vishay ki direction par abhi {driver} ka prabhav sabse zyada dikh raha hai."
-        else:
-            fallback = f"{driver} is currently the strongest planetary influence in this area."
+            if stage == ConsultationEngine.STAGE_CHART_READING:
+                return (
+                    f"{domain} विषय में अभी {primary_driver} का प्रभाव सबसे मजबूत दिख रहा है, "
+                    f"और {risk_factor} से जुड़े फैसलों में सावधानी ज़रूरी है। "
+                    f"चार्ट का momentum अभी {momentum} है।"
+                )
+            return "पहले बताए गए ग्रह-संकेत को दोहराने की जगह अब उसी संकेत को आपकी स्थिति में लागू करते हैं।"
 
-        if llm_cause and llm_cause.strip():
-            return f"{fallback} {llm_cause.strip()}"
+        if ConsultationEngine._is_hi_rom(language, script):
+            if stage == ConsultationEngine.STAGE_CHART_READING:
+                return (
+                    f"{domain} area mein abhi {primary_driver} ka prabhav sabse strong dikh raha hai, "
+                    f"aur {risk_factor} se jude decisions mein caution zaroori hai. "
+                    f"Chart momentum abhi {momentum} hai."
+                )
+            return "Pehle wale chart interpretation ko repeat kiye bina ab usi signal ko aapki situation mein apply karte hain."
 
-        return fallback
+        if stage == ConsultationEngine.STAGE_CHART_READING:
+            return (
+                f"In {domain}, {primary_driver} is the strongest influence right now, "
+                f"so be careful around {risk_factor}. "
+                f"The current momentum reads as {momentum}."
+            )
 
-    @staticmethod
-    def _momentum_fallback(momentum, language, script):
-        m = (momentum or "Neutral").strip()
-
-        if ConsultationEngine._is_hi_dev(language, script):
-            mapping = {
-                "Positive": "समय सहयोगी है, इसलिए निरंतर प्रयास से प्रगति तेज हो सकती है।",
-                "Neutral": "समय स्थिर है, इसलिए धैर्यपूर्ण और लगातार प्रयास परिणाम देगा।",
-                "Challenging": "समय थोड़ा धीमा है, इसलिए अनुशासित और योजनाबद्ध तरीके से आगे बढ़ना बेहतर होगा।"
-            }
-        elif ConsultationEngine._is_hi_rom(language, script):
-            mapping = {
-                "Positive": "Samay supportive hai, isliye lagataar mehnat se progress tez ho sakti hai.",
-                "Neutral": "Samay stable hai, isliye patience aur consistency se results milenge.",
-                "Challenging": "Samay thoda slow hai, isliye disciplined aur planned tareeke se aage badhna better hoga."
-            }
-        else:
-            mapping = {
-                "Positive": "Timing is supportive, so consistent effort can move things quickly.",
-                "Neutral": "Timing is steady, so patient consistency will deliver results.",
-                "Challenging": "Timing is slower now, so a disciplined and planned approach is best."
-            }
-
-        return mapping.get(m, mapping["Neutral"])
+        return "Instead of repeating the base chart reading, we now apply that same signal to your current context."
 
     @staticmethod
-    def _dasha_line(current_dasha, language, script):
+    def _dasha_timing(domain, current_dasha, transits, language, script, primary_driver):
         dasha = current_dasha or {}
-        md = str(dasha.get("mahadasha") or "").strip()
-        ad = str(dasha.get("antardasha") or "").strip()
+        mahadasha = str(dasha.get("mahadasha") or "").strip()
+        antardasha = str(dasha.get("antardasha") or "").strip()
+        transit_data = transits or {}
 
         if ConsultationEngine._is_hi_dev(language, script):
-            if md and ad:
-                return f"आपके चार्ट में इस समय {md} की दशा और {ad} का अंतर्दशा चल रहा है।", md, ad
-            if md:
-                return f"आपके चार्ट में इस समय {md} की दशा सक्रिय है।", md, ad
-            if ad:
-                return f"इस समय {ad} का अंतर्दशा प्रभाव दिखा रहा है।", md, ad
-            return "", md, ad
-
-        if ConsultationEngine._is_hi_rom(language, script):
-            if md and ad:
-                return f"Aapke chart mein is samay {md} ki dasha aur {ad} ka antardasha chal raha hai.", md, ad
-            if md:
-                return f"Aapke chart mein is samay {md} ki dasha active hai.", md, ad
-            if ad:
-                return f"Is samay {ad} ka antardasha apna prabhav dikha raha hai.", md, ad
-            return "", md, ad
-
-        if md and ad:
-            return f"Your chart is currently running {md} mahadasha with {ad} antardasha.", md, ad
-        if md:
-            return f"Your chart is currently in {md} mahadasha.", md, ad
-        if ad:
-            return f"The current antardasha influence is {ad}.", md, ad
-        return "", md, ad
-
-    @staticmethod
-    def _timing_interpretation(domain, primary_driver, momentum, current_dasha, transits, llm_timing, language, script):
-        domain_ruler = (primary_driver or "").strip()
-        dasha_line, md, ad = ConsultationEngine._dasha_line(current_dasha, language, script)
-
-        is_strong_window = bool(domain_ruler and (domain_ruler == md or domain_ruler == ad))
-        momentum_line = ConsultationEngine._momentum_fallback(momentum, language, script)
-
-        if ConsultationEngine._is_hi_dev(language, script):
-            if is_strong_window:
-                match_line = f"{domain_ruler} की सक्रियता के कारण {domain} के लिए समय खिड़की अपेक्षाकृत मजबूत बन रही है।"
+            if mahadasha and antardasha:
+                line = f"आपके chart में इस समय {mahadasha} की दशा और {antardasha} का अंतर्दशा चल रहा है।"
+            elif mahadasha:
+                line = f"आपके chart में इस समय {mahadasha} की दशा सक्रिय है।"
             else:
-                match_line = momentum_line
-        elif ConsultationEngine._is_hi_rom(language, script):
-            if is_strong_window:
-                match_line = f"{domain_ruler} ke active hone se {domain} ke liye timing window relatively strong ban rahi hai."
-            else:
-                match_line = momentum_line
-        else:
-            if is_strong_window:
-                match_line = f"Because {domain_ruler} is active in dasha, the timing window for {domain} is relatively stronger."
-            else:
-                match_line = momentum_line
+                line = "इस समय दशा-आधारित timing स्थिर है, इसलिए धैर्यपूर्ण execution बेहतर रहेगा।"
 
-        transit_line = ""
-        transit = transits or {}
-        if domain_ruler and domain_ruler in transit:
-            house = transit.get(domain_ruler)
-            if ConsultationEngine._is_hi_dev(language, script):
-                transit_line = f"ट्रांजिट में {domain_ruler} का प्रभाव भी इस विषय को सक्रिय कर रहा है।"
-            elif ConsultationEngine._is_hi_rom(language, script):
-                transit_line = f"Transit mein {domain_ruler} ka prabhav bhi is vishay ko activate kar raha hai."
-            else:
-                transit_line = f"Transit influence of {domain_ruler} is also activating this theme."
-
-            if house:
-                if ConsultationEngine._is_hi_dev(language, script):
-                    transit_line += f" यह प्रभाव मुख्यतः घर {house} से दिखाई देता है।"
-                elif ConsultationEngine._is_hi_rom(language, script):
-                    transit_line += f" Yeh effect primarily house {house} se dikh raha hai."
+            if primary_driver and primary_driver in transit_data:
+                house = transit_data.get(primary_driver)
+                if house:
+                    line += f" ट्रांजिट में {primary_driver} का प्रभाव भी house {house} से इस विषय को सक्रिय कर रहा है।"
                 else:
-                    transit_line += f" This influence is currently visible from house {house}."
+                    line += f" ट्रांजिट में {primary_driver} भी इस विषय को सक्रिय कर रहा है।"
 
-        parts = []
-        if dasha_line:
-            parts.append(dasha_line)
-        if match_line:
-            parts.append(match_line)
-        if transit_line:
-            parts.append(transit_line)
+            return line
 
-        fallback = " ".join(parts).strip() or momentum_line
-
-        if llm_timing and llm_timing.strip():
-            return f"{fallback} {llm_timing.strip()}"
-
-        return fallback
-
-    @staticmethod
-    def _goal_advice_tail(user_goal, language, script):
-        goal = (user_goal or "").strip().replace("_", " ")
-        if not goal:
-            return ""
-
-        if ConsultationEngine._is_hi_dev(language, script):
-            return f"कदम ऐसे रखें जो सीधे {goal} के लक्ष्य को समर्थन दें।"
         if ConsultationEngine._is_hi_rom(language, script):
-            return f"Steps aise rakhein jo seedhe {goal} ke goal ko support karein."
-        return f"Prioritize actions that directly support your {goal} goal."
+            if mahadasha and antardasha:
+                line = f"Aapke chart mein iss samay {mahadasha} ki dasha aur {antardasha} ka antardasha chal raha hai."
+            elif mahadasha:
+                line = f"Aapke chart mein iss samay {mahadasha} ki dasha active hai."
+            else:
+                line = "Iss phase mein dasha timing neutral hai, isliye patient execution better rahega."
 
-    @staticmethod
-    def _practical_advice(risk_factor, llm_guidance, language, script, stage, user_goal):
-        risk = (risk_factor or "Unknown").strip() or "Unknown"
+            if primary_driver and primary_driver in transit_data:
+                house = transit_data.get(primary_driver)
+                if house:
+                    line += f" Transit mein {primary_driver} ka prabhav house {house} se bhi iss theme ko activate kar raha hai."
+                else:
+                    line += f" Transit mein {primary_driver} bhi iss theme ko activate kar raha hai."
 
-        if ConsultationEngine._is_hi_dev(language, script):
-            stage_line = {
-                FollowupRouter.STAGE_SITUATION_ANALYSIS: "इस चरण में पहले स्थिति स्पष्ट करें, फिर बड़ा निर्णय लें।",
-                FollowupRouter.STAGE_STRATEGY_GUIDANCE: "अब प्रतिक्रिया नहीं, रणनीति-आधारित निर्णय अधिक लाभ देंगे।",
-                FollowupRouter.STAGE_ACTION_PLAN: "अब छोटे और मापने योग्य कदम लेकर निरंतरता बनाए रखें।"
-            }.get(stage, "फिलहाल संतुलित और व्यावहारिक दृष्टिकोण रखें।")
-            caution = f"{risk} से जुड़े मामलों में जल्दबाज़ी से बचना महत्वपूर्ण रहेगा। {stage_line}"
-        elif ConsultationEngine._is_hi_rom(language, script):
-            stage_line = {
-                FollowupRouter.STAGE_SITUATION_ANALYSIS: "Is stage par pehle situation clear karein, phir bada decision lein.",
-                FollowupRouter.STAGE_STRATEGY_GUIDANCE: "Ab reaction nahi, strategy-based decisions zyada fayda denge.",
-                FollowupRouter.STAGE_ACTION_PLAN: "Ab chhote aur measurable steps lekar consistency banaye rakhein."
-            }.get(stage, "Filhaal balanced aur practical approach rakhein.")
-            caution = f"{risk} se jude mamlo mein jaldbaazi se bachna important rahega. {stage_line}"
+            return line
+
+        if mahadasha and antardasha:
+            line = f"Your chart is currently running {mahadasha} mahadasha with {antardasha} antardasha."
+        elif mahadasha:
+            line = f"Your chart is currently in {mahadasha} mahadasha."
         else:
-            stage_line = {
-                FollowupRouter.STAGE_SITUATION_ANALYSIS: "At this stage, get clarity before making a big move.",
-                FollowupRouter.STAGE_STRATEGY_GUIDANCE: "Now strategy-led decisions will work better than reactive moves.",
-                FollowupRouter.STAGE_ACTION_PLAN: "Now execute with small measurable steps and consistency."
-            }.get(stage, "Maintain a balanced and practical approach.")
-            caution = f"Avoid rushed decisions around {risk}. {stage_line}"
+            line = "Dasha timing is currently steady, so patient execution is better than rushed moves."
 
-        goal_tail = ConsultationEngine._goal_advice_tail(user_goal, language, script)
+        if primary_driver and primary_driver in transit_data:
+            house = transit_data.get(primary_driver)
+            if house:
+                line += f" Transit influence of {primary_driver} from house {house} is reinforcing this theme."
+            else:
+                line += f" Transit influence of {primary_driver} is reinforcing this theme."
 
-        parts = [caution]
-        if goal_tail:
-            parts.append(goal_tail)
-        if llm_guidance and llm_guidance.strip():
-            parts.append(llm_guidance.strip())
-
-        return " ".join(parts).strip()
+        return line
 
     @staticmethod
-    def _followup_question(followup_question, llm_followup, language, script, user_goal):
-        if followup_question and followup_question.strip():
-            return followup_question.strip()
-
-        if llm_followup and llm_followup.strip():
-            return llm_followup.strip()
-
-        goal = (user_goal or "").strip().replace("_", " ")
-        if goal:
-            if ConsultationEngine._is_hi_dev(language, script):
-                return f"क्या आप चाहेंगे कि मैं {goal} के लिए अगले 30 दिनों का स्पष्ट कार्ययोजना दूँ?"
-            if ConsultationEngine._is_hi_rom(language, script):
-                return f"Kya aap chahenge ki main {goal} ke liye agle 30 din ka clear action plan doon?"
-            return f"Would you like a clear 30-day action plan for your {goal} goal?"
+    def _practical_advice(ai_guidance, language, script, user_goal, stage):
+        llm_line = " ".join(line.strip() for line in str(ai_guidance or "").splitlines() if line.strip())
 
         if ConsultationEngine._is_hi_dev(language, script):
-            return "क्या आप चाहेंगे कि मैं इसे आपके लिए अगले स्पष्ट कदमों में बाँट दूँ?"
+            stage_tip = {
+                ConsultationEngine.STAGE_CHART_READING: "अभी जल्दबाज़ी में बड़ा निर्णय न लें।",
+                ConsultationEngine.STAGE_SITUATION_ANALYSIS: "पहले facts स्पष्ट करें, फिर अगला कदम लें।",
+                ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "अब fixed routine के साथ strategy execute करें।",
+                ConsultationEngine.STAGE_ACTION_PLAN: "अगले 30 दिनों के measurable actions तय करके चलें।",
+            }.get(stage, "संतुलित दृष्टिकोण रखें।")
+
+            goal_line = ""
+            if user_goal:
+                goal_line = f" अपने {str(user_goal).replace('_', ' ')} लक्ष्य के हिसाब से steps चुनें।"
+
+            return f"{stage_tip}{goal_line} {llm_line}".strip()
+
         if ConsultationEngine._is_hi_rom(language, script):
-            return "Kya aap chahenge ki main ise aapke liye next clear steps mein tod doon?"
-        return "Would you like me to break this into clear next steps for you?"
+            stage_tip = {
+                ConsultationEngine.STAGE_CHART_READING: "Abhi jaldbaazi mein bada decision mat lijiye.",
+                ConsultationEngine.STAGE_SITUATION_ANALYSIS: "Pehle facts clear kariye, phir next step lijiye.",
+                ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "Ab fixed routine ke saath strategy execute kariye.",
+                ConsultationEngine.STAGE_ACTION_PLAN: "Agle 30 din ke measurable actions set karke chaliye.",
+            }.get(stage, "Balanced approach rakhiye.")
+
+            goal_line = ""
+            if user_goal:
+                goal_line = f" Apne {str(user_goal).replace('_', ' ')} goal ke hisaab se steps choose kariye."
+
+            return f"{stage_tip}{goal_line} {llm_line}".strip()
+
+        stage_tip = {
+            ConsultationEngine.STAGE_CHART_READING: "Avoid a rushed big move right now.",
+            ConsultationEngine.STAGE_SITUATION_ANALYSIS: "Clarify facts first, then take the next step.",
+            ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "Execute with a fixed routine and strategy discipline.",
+            ConsultationEngine.STAGE_ACTION_PLAN: "Set measurable 30-day actions and track them weekly.",
+        }.get(stage, "Maintain a balanced approach.")
+
+        goal_line = ""
+        if user_goal:
+            goal_line = f" Choose actions aligned with your {str(user_goal).replace('_', ' ')} goal."
+
+        return f"{stage_tip}{goal_line} {llm_line}".strip()
 
     @staticmethod
-    def build_consultation_payload(
+    def default_followup_question(domain, language, script, stage):
+        if ConsultationEngine._is_hi_dev(language, script):
+            mapping = {
+                ConsultationEngine.STAGE_CHART_READING: f"{domain} में आपकी मौजूदा स्थिति एक पंक्ति में बताएंगे?",
+                ConsultationEngine.STAGE_SITUATION_ANALYSIS: "क्या आप चाहेंगे कि मैं इसे strategy-first तरीके से तोड़ दूँ?",
+                ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "क्या आप इस पर 30-दिन का action plan चाहते हैं?",
+                ConsultationEngine.STAGE_ACTION_PLAN: "क्या आप चाहेंगे कि मैं weekly checkpoints भी सेट कर दूँ?",
+            }
+            return mapping.get(stage, "क्या आप इस विषय में और गहराई से जाना चाहेंगे?")
+
+        if ConsultationEngine._is_hi_rom(language, script):
+            mapping = {
+                ConsultationEngine.STAGE_CHART_READING: f"{domain} mein aapki current situation ek line mein bataenge?",
+                ConsultationEngine.STAGE_SITUATION_ANALYSIS: "Kya aap chahenge ki main ise strategy-first tareeke se tod doon?",
+                ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "Kya aap iske liye 30-day action plan chahte hain?",
+                ConsultationEngine.STAGE_ACTION_PLAN: "Kya aap chahenge ki main weekly checkpoints bhi set kar doon?",
+            }
+            return mapping.get(stage, "Kya aap is topic mein aur depth chahte hain?")
+
+        mapping = {
+            ConsultationEngine.STAGE_CHART_READING: f"Can you share your current {domain} situation in one line?",
+            ConsultationEngine.STAGE_SITUATION_ANALYSIS: "Would you like me to break this into a strategy-first approach?",
+            ConsultationEngine.STAGE_STRATEGY_GUIDANCE: "Would you like a 30-day action plan for this?",
+            ConsultationEngine.STAGE_ACTION_PLAN: "Do you want weekly checkpoints for execution?",
+        }
+        return mapping.get(stage, "Would you like to go deeper in this area?")
+
+    @staticmethod
+    def build_consultation_reply(
         domain,
         domain_data,
-        llm_fields,
+        ai_guidance,
         language,
         script,
-        followup_question,
         stage,
         age,
         life_stage,
+        user_goal,
         current_dasha,
         transits,
-        user_goal
+        followup_question,
     ):
         domain_data = domain_data or {}
-        llm_fields = llm_fields or {}
+        primary_driver = str(domain_data.get("primary_driver") or "").strip() or "Saturn"
 
-        primary_driver = domain_data.get("primary_driver", "Unknown")
-        risk_factor = domain_data.get("risk_factor", "Unknown")
-        momentum = domain_data.get("momentum", "Neutral")
+        parts = []
 
-        return {
-            "observation": ConsultationEngine._observation(
-                domain=domain,
-                llm_observation=llm_fields.get("observation", ""),
-                language=language,
-                script=script,
-                stage=stage,
-                age=age,
-                life_stage=life_stage,
-                user_goal=user_goal
-            ),
-            "planetary_reasoning": ConsultationEngine._planetary_reasoning(
-                primary_driver=primary_driver,
-                llm_cause=llm_fields.get("cause", ""),
-                language=language,
-                script=script
-            ),
-            "timing_interpretation": ConsultationEngine._timing_interpretation(
-                domain=domain,
-                primary_driver=primary_driver,
-                momentum=momentum,
-                current_dasha=current_dasha,
-                transits=transits,
-                llm_timing=llm_fields.get("timing", ""),
-                language=language,
-                script=script
-            ),
-            "practical_advice": ConsultationEngine._practical_advice(
-                risk_factor=risk_factor,
-                llm_guidance=llm_fields.get("guidance", ""),
-                language=language,
-                script=script,
-                stage=stage,
-                user_goal=user_goal
-            ),
-            "followup_question": ConsultationEngine._followup_question(
-                followup_question=followup_question,
-                llm_followup=llm_fields.get("followup", ""),
-                language=language,
-                script=script,
-                user_goal=user_goal
-            )
-        }
+        stage_bridge = ConsultationEngine._stage_bridge(stage, language, script)
+        life_stage_line = ConsultationEngine._life_stage_context(age, life_stage, language, script)
+        goal_line = ConsultationEngine._goal_context(user_goal, language, script)
+        reasoning_line = ConsultationEngine._chart_reasoning(domain, domain_data, language, script, stage)
+        timing_line = ConsultationEngine._dasha_timing(domain, current_dasha, transits, language, script, primary_driver)
+        advice_line = ConsultationEngine._practical_advice(ai_guidance, language, script, user_goal, stage)
+        question_line = followup_question or ConsultationEngine.default_followup_question(domain, language, script, stage)
+
+        for line in [stage_bridge, life_stage_line, goal_line]:
+            if line:
+                parts.append(line)
+
+        parts.append(reasoning_line)
+        parts.append(timing_line)
+        parts.append(advice_line)
+        parts.append(question_line)
+
+        return "\n\n".join(part.strip() for part in parts if part and part.strip())

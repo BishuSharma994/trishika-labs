@@ -3,84 +3,81 @@ from datetime import datetime
 
 from app.ai import ask_ai
 from app.astro_engine import ParashariEngine
-from app.conversation.astrology_response_template import AstrologyResponseTemplate
+from app.conversation.astrologer_persona import AstrologerPersona
 from app.conversation.consultation_engine import ConsultationEngine
-from app.conversation.followup_router import FollowupRouter
 from app.conversation.intent_router import IntentRouter
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.planet_translator import PlanetTranslator
+from app.conversation.profile_manager import ProfileManager
 from app.conversation.prompt_builder import AstrologerPrompts
 from app.conversation.state_manager import StateManager
 from app.conversation.timing_router import TimingRouter
+from app.conversation.life_stage_detector import detect as detect_life_stage
+from app.utils.age_calculator import calculate_age
 from app.utils.birth_data_parser import BirthDataParser
+from app.utils.geo_resolver import resolve_coordinates
 
 
 LANGUAGE_MENU = {
-    "keyboard": [
-        ["English"],
-        ["हिंदी"],
-        ["Hindi (Roman)"]
-    ],
-    "resize_keyboard": True
+    "keyboard": [["English"], ["हिंदी"], ["Hindi (Roman)"]],
+    "resize_keyboard": True,
 }
 
-
 MAIN_MENU_EN = {
-    "keyboard": [
-        ["🔮 Quick Astrology Question"],
-        ["📜 Full Birth Chart Reading"]
-    ],
-    "resize_keyboard": True
+    "keyboard": [["🔮 Quick Astrology Question"], ["📜 Full Birth Chart Reading"]],
+    "resize_keyboard": True,
 }
 
 MAIN_MENU_DEV = {
-    "keyboard": [
-        ["🔮 त्वरित ज्योतिष प्रश्न"],
-        ["📜 पूर्ण कुंडली विश्लेषण"]
-    ],
-    "resize_keyboard": True
+    "keyboard": [["🔮 त्वरित ज्योतिष प्रश्न"], ["📜 पूर्ण कुंडली विश्लेषण"]],
+    "resize_keyboard": True,
 }
 
 MAIN_MENU_ROM = {
-    "keyboard": [
-        ["🔮 Turant Jyotish Prashna"],
-        ["📜 Poori Kundli Vishleshan"]
-    ],
-    "resize_keyboard": True
+    "keyboard": [["🔮 Turant Jyotish Prashna"], ["📜 Poori Kundli Vishleshan"]],
+    "resize_keyboard": True,
 }
 
+PROFILE_SCOPE_EN = {
+    "keyboard": [["My Chart"], ["Family Member"]],
+    "resize_keyboard": True,
+}
+
+PROFILE_SCOPE_DEV = {
+    "keyboard": [["मेरी कुंडली"], ["Family Member"]],
+    "resize_keyboard": True,
+}
+
+PROFILE_SCOPE_ROM = {
+    "keyboard": [["Meri Kundli"], ["Family Member"]],
+    "resize_keyboard": True,
+}
 
 DOMAIN_MENU_EN = {
-    "keyboard": [
-        ["Career", "Finance"],
-        ["Marriage", "Health"]
-    ],
-    "resize_keyboard": True
+    "keyboard": [["Career", "Finance"], ["Marriage", "Health"]],
+    "resize_keyboard": True,
 }
 
 DOMAIN_MENU_DEV = {
-    "keyboard": [
-        ["करियर", "धन"],
-        ["विवाह", "स्वास्थ्य"]
-    ],
-    "resize_keyboard": True
+    "keyboard": [["करियर", "धन"], ["विवाह", "स्वास्थ्य"]],
+    "resize_keyboard": True,
 }
 
 DOMAIN_MENU_ROM = {
-    "keyboard": [
-        ["Career", "Paisa"],
-        ["Shaadi", "Health"]
-    ],
-    "resize_keyboard": True
+    "keyboard": [["Career", "Paisa"], ["Shaadi", "Health"]],
+    "resize_keyboard": True,
 }
 
 
 class DialogEngine:
-
-    @staticmethod
-    def normalize_birth_data(session):
-        dob = datetime.strptime(session.dob, "%Y-%m-%d").strftime("%Y-%m-%d")
-        return dob, session.tob
+    GOAL_KEYWORDS = {
+        "job_promotion": ["promotion", "increment", "salary hike", "प्रमोशन"],
+        "business_start": ["business", "startup", "start business", "व्यापार", "बिजनेस"],
+        "job_switch": ["job switch", "change job", "new job", "नौकरी बदल"],
+        "relationship_growth": ["relationship", "marriage", "shaadi", "विवाह", "रिश्ता"],
+        "health_recovery": ["health", "recovery", "fitness", "स्वास्थ्य"],
+        "wealth_growth": ["wealth", "investment", "savings", "finance", "धन", "पैसा"],
+    }
 
     @staticmethod
     def _is_hi_dev(language, script):
@@ -101,6 +98,16 @@ class DialogEngine:
         return MAIN_MENU_EN
 
     @staticmethod
+    def _profile_scope_menu(language, script):
+        if DialogEngine._is_hi_dev(language, script):
+            return PROFILE_SCOPE_DEV
+
+        if DialogEngine._is_hi_rom(language, script):
+            return PROFILE_SCOPE_ROM
+
+        return PROFILE_SCOPE_EN
+
+    @staticmethod
     def _domain_menu(language, script):
         if DialogEngine._is_hi_dev(language, script):
             return DOMAIN_MENU_DEV
@@ -119,7 +126,6 @@ class DialogEngine:
             return "devanagari"
 
         t = text.lower()
-
         roman_markers = [
             "turant",
             "jyotish",
@@ -130,7 +136,7 @@ class DialogEngine:
             "janm",
             "shaadi",
             "paisa",
-            "hindi"
+            "hindi",
         ]
 
         if any(marker in t for marker in roman_markers):
@@ -149,115 +155,110 @@ class DialogEngine:
         return language, script
 
     @staticmethod
-    def _birth_details_prompt(is_quick, language, script):
-        if is_quick:
-            if DialogEngine._is_hi_dev(language, script):
-                return (
-                    "आपका प्रश्न देखने के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
-                    "कृपया भेजें:\n"
-                    "जन्म तिथि\n"
-                    "जन्म समय\n"
-                    "जन्म स्थान"
-                )
-
-            if DialogEngine._is_hi_rom(language, script):
-                return (
-                    "Aapka prashna dekhne ke liye mujhe aapki janm jaankari chahiye.\n\n"
-                    "Kripya bheje:\n"
-                    "Janm tareekh\n"
-                    "Janm samay\n"
-                    "Janm sthan"
-                )
-
-            return (
-                "To answer your question I need your birth details.\n\n"
-                "Please send:\n"
-                "Date of birth\n"
-                "Time of birth\n"
-                "Birth place"
-            )
+    def _birth_details_prompt(language, script, profile_name):
+        target = profile_name or "this profile"
 
         if DialogEngine._is_hi_dev(language, script):
             return (
-                "पूर्ण कुंडली विश्लेषण के लिए मुझे आपकी जन्म जानकारी चाहिए।\n\n"
+                f"{target} के लिए जन्म जानकारी भेजें।\n\n"
                 "कृपया भेजें:\n"
-                "जन्म तिथि\n"
-                "जन्म समय\n"
+                "जन्म तिथि (YYYY-MM-DD)\n"
+                "जन्म समय (HH:MM)\n"
                 "जन्म स्थान"
             )
 
         if DialogEngine._is_hi_rom(language, script):
             return (
-                "Poori kundli vishleshan ke liye mujhe aapki janm jaankari chahiye.\n\n"
+                f"{target} ke liye janm jaankari bhejiye.\n\n"
                 "Kripya bheje:\n"
-                "Janm tareekh\n"
-                "Janm samay\n"
+                "Janm tareekh (YYYY-MM-DD)\n"
+                "Janm samay (HH:MM)\n"
                 "Janm sthan"
             )
 
         return (
-            "For a full birth chart reading I need your birth details.\n\n"
-            "Please send:\n"
-            "Date of birth\n"
-            "Time of birth\n"
+            f"Please share birth details for {target}.\n\n"
+            "Send:\n"
+            "Date of birth (YYYY-MM-DD)\n"
+            "Time of birth (HH:MM)\n"
             "Birth place"
         )
 
     @staticmethod
     def _birth_data_retry_prompt(language, script):
         if DialogEngine._is_hi_dev(language, script):
-            return "कृपया पूरी जन्म जानकारी भेजें।"
+            return "कृपया पूरी जन्म जानकारी भेजें: जन्म तिथि, समय, और स्थान।"
 
         if DialogEngine._is_hi_rom(language, script):
-            return "Kripya poori janm jaankari bheje."
+            return "Kripya poori janm jaankari bheje: tareekh, samay, aur sthan."
 
-        return "Please send complete birth details."
+        return "Please send complete birth details: date, time, and place."
 
     @staticmethod
     def _domain_prompt(language, script):
         if DialogEngine._is_hi_dev(language, script):
-            return "आप किस विषय के बारे में जानना चाहते हैं?"
+            return "अब आप किस विषय पर मार्गदर्शन चाहते हैं?"
 
         if DialogEngine._is_hi_rom(language, script):
-            return "Aap kis vishay ke baare mein jaana chahte hain?"
+            return "Ab aap kis topic par guidance chahte hain?"
 
-        return "What area would you like to explore?"
+        return "What area would you like to explore now?"
 
     @staticmethod
     def _domain_not_detected(language, script):
         if DialogEngine._is_hi_dev(language, script):
-            return "कृपया कोई विषय चुनें या अपना प्रश्न पूछें।"
+            return "कृपया Career, Finance, Marriage या Health में से विषय चुनें।"
 
         if DialogEngine._is_hi_rom(language, script):
-            return "Kripya koi vishay chunen ya apna prashna poochhein."
+            return "Kripya Career, Finance, Marriage ya Health mein se topic chuniye."
 
-        return "Choose a topic or ask your question."
+        return "Please choose a topic from Career, Finance, Marriage, or Health."
 
     @staticmethod
-    def _menu_retry(language, script):
-        if DialogEngine._is_hi_dev(language, script):
-            return "कृपया मेनू से एक विकल्प चुनें।"
-
-        if DialogEngine._is_hi_rom(language, script):
-            return "Kripya menu se ek vikalp chunen."
-
-        return "Please choose an option from the menu."
+    def _normalize_birth_data(dob, tob):
+        normalized_dob = datetime.strptime(dob, "%Y-%m-%d").strftime("%Y-%m-%d")
+        normalized_tob = str(tob or "").strip()
+        return normalized_dob, normalized_tob
 
     @staticmethod
-    def _domain_error(language, script):
-        if DialogEngine._is_hi_dev(language, script):
-            return "अभी इस विषय पर स्पष्ट विश्लेषण उपलब्ध नहीं है। कृपया दूसरा प्रश्न पूछें।"
+    def _active_profile(session):
+        profiles = ProfileManager.parse_profiles(getattr(session, "profiles", None))
+        active_name = str(getattr(session, "active_profile_name", "") or "").strip().lower()
 
-        if DialogEngine._is_hi_rom(language, script):
-            return "Abhi is vishay par spasht vishleshan uplabdh nahi hai. Kripya doosra prashna poochhein."
+        if active_name:
+            for profile in profiles:
+                if str(profile.get("name", "")).strip().lower() == active_name:
+                    return profile
 
-        return "A clear domain analysis is not available yet. Please ask another question."
+        if profiles:
+            return profiles[0]
+
+        return {
+            "name": getattr(session, "active_profile_name", None) or "",
+            "dob": getattr(session, "dob", None) or "",
+            "tob": getattr(session, "tob", None) or "",
+            "place": getattr(session, "place", None) or "",
+        }
+
+    @staticmethod
+    def _detect_goal(text):
+        if not text:
+            return None
+
+        t = text.lower()
+
+        for goal, markers in DialogEngine.GOAL_KEYWORDS.items():
+            if any(marker in t for marker in markers):
+                return goal
+
+        return None
 
     @staticmethod
     def load_chart(user_id, session):
-
-        lat = 28.6139
-        lon = 77.2090
+        active_profile = DialogEngine._active_profile(session)
+        dob = str(active_profile.get("dob", "") or "").strip()
+        tob = str(active_profile.get("tob", "") or "").strip()
+        place = str(active_profile.get("place", "") or "").strip()
 
         if session.chart_data:
             try:
@@ -265,28 +266,21 @@ class DialogEngine:
             except Exception:
                 pass
 
-        dob, time = DialogEngine.normalize_birth_data(session)
+        if not dob or not tob or not place:
+            raise ValueError("Missing birth details for active profile")
 
-        chart = ParashariEngine.generate_chart(
-            dob,
-            time,
-            lat,
-            lon
-        )
+        dob, tob = DialogEngine._normalize_birth_data(dob, tob)
+        lat, lon = resolve_coordinates(place)
 
-        StateManager.update_session(
-            user_id,
-            chart_data=json.dumps(chart)
-        )
+        chart = ParashariEngine.generate_chart(dob, tob, lat, lon)
+        StateManager.update_session(user_id, chart_data=json.dumps(chart))
 
         return chart
 
     @staticmethod
-    def process(user_id, text, session):
-
+    def process(user_id, text, session=None):
         MemoryEngine.add_user_message(user_id, text)
 
-        # Always process with a fresh DB snapshot to avoid stale ORM objects.
         session = StateManager.get_or_create_session(user_id)
         language = session.language or "en"
         script = getattr(session, "script", None) or "latin"
@@ -296,15 +290,24 @@ class DialogEngine:
                 user_id,
                 step="language",
                 language=None,
-                script=None
+                script=None,
+                last_domain=None,
+                conversation_phase=ConsultationEngine.STAGE_CHART_READING,
+                last_followup_question=None,
+                theme_shown=False,
+                persona_introduced=False,
+                chart_data=None,
+                pending_profile_name=None,
+                active_profile_name=None,
             )
+            MemoryEngine.clear(user_id)
 
             return {
                 "text": "Please select your language\n\nकृपया अपनी भाषा चुनें",
-                "keyboard": LANGUAGE_MENU
+                "keyboard": LANGUAGE_MENU,
             }
 
-        if session.step == "language":
+        if session.step in {"start", "language"}:
             t = text.lower()
 
             if "roman" in t:
@@ -313,11 +316,11 @@ class DialogEngine:
                     language="hi",
                     script="roman",
                     step="menu",
-                    last_domain=None
+                    last_domain=None,
                 )
                 return {
                     "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
-                    "keyboard": MAIN_MENU_ROM
+                    "keyboard": MAIN_MENU_ROM,
                 }
 
             if "english" in t:
@@ -325,11 +328,12 @@ class DialogEngine:
                     user_id,
                     language="en",
                     script="latin",
-                    step="menu"
+                    step="menu",
+                    last_domain=None,
                 )
                 return {
                     "text": "Welcome.\n\nHow would you like to begin?",
-                    "keyboard": MAIN_MENU_EN
+                    "keyboard": MAIN_MENU_EN,
                 }
 
             if "हिंदी" in text:
@@ -337,11 +341,12 @@ class DialogEngine:
                     user_id,
                     language="hi",
                     script="devanagari",
-                    step="menu"
+                    step="menu",
+                    last_domain=None,
                 )
                 return {
                     "text": "नमस्ते।\n\nआप कैसे शुरू करना चाहेंगे?",
-                    "keyboard": MAIN_MENU_DEV
+                    "keyboard": MAIN_MENU_DEV,
                 }
 
             if "hindi" in t:
@@ -349,25 +354,22 @@ class DialogEngine:
                     user_id,
                     language="hi",
                     script="roman",
-                    step="menu"
+                    step="menu",
+                    last_domain=None,
                 )
                 return {
                     "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
-                    "keyboard": DialogEngine._main_menu(language, script)
+                    "keyboard": MAIN_MENU_ROM,
                 }
 
             return {
                 "text": "Please choose a language / कृपया भाषा चुनें",
-                "keyboard": LANGUAGE_MENU
+                "keyboard": LANGUAGE_MENU,
             }
 
         if session.step == "menu":
             t = text.lower()
-
-            if language == "hi" and not script:
-                script = DialogEngine._infer_script_from_text(text) or "devanagari"
-                session = StateManager.update_session(user_id, script=script)
-                language, script = DialogEngine._coerce_language_script(session, text)
+            language, script = DialogEngine._coerce_language_script(session, text)
 
             quick_selected = (
                 "quick" in t
@@ -375,7 +377,6 @@ class DialogEngine:
                 or "त्वरित" in text
                 or "jyotish prashna" in t
             )
-
             full_selected = (
                 "chart" in t
                 or "kundli" in t
@@ -384,29 +385,68 @@ class DialogEngine:
                 or "poori" in t
             )
 
-            if quick_selected:
-                StateManager.update_session(user_id, step="birthdata")
+            if quick_selected or full_selected:
+                StateManager.update_session(
+                    user_id,
+                    step="profile_scope",
+                    pending_profile_name=None,
+                    conversation_phase=ConsultationEngine.STAGE_CHART_READING,
+                    last_followup_question=None,
+                    chart_data=None,
+                )
+                return {
+                    "text": ProfileManager.declaration_prompt(language, script),
+                    "keyboard": DialogEngine._profile_scope_menu(language, script),
+                }
 
-                if language == "hi" and script == "devanagari":
-                    return "कृपया अपनी जन्म जानकारी भेजें।"
+            if DialogEngine._is_hi_dev(language, script):
+                return {"text": "कृपया मेनू से एक विकल्प चुनें।", "keyboard": MAIN_MENU_DEV}
 
-                if language == "hi" and script == "roman":
-                    return "Kripya apni janm jaankari bheje."
+            if DialogEngine._is_hi_rom(language, script):
+                return {"text": "Kripya menu se ek vikalp chuniye.", "keyboard": MAIN_MENU_ROM}
 
-                return "Please send your birth details."
+            return {"text": "Please choose an option from the menu.", "keyboard": MAIN_MENU_EN}
 
-            if full_selected:
-                StateManager.update_session(user_id, step="birthdata")
+        if session.step == "profile_scope":
+            language, script = DialogEngine._coerce_language_script(session, text)
+            scope = ProfileManager.detect_profile_scope(text)
 
-                if language == "hi" and script == "devanagari":
-                    return "कृपया अपनी जन्म जानकारी भेजें।"
+            if scope == "self":
+                profile_name = ProfileManager.default_profile_name(language, script)
+                StateManager.update_session(
+                    user_id,
+                    step="birthdata",
+                    pending_profile_name=profile_name,
+                    active_profile_name=profile_name,
+                )
+                return DialogEngine._birth_details_prompt(language, script, profile_name)
 
-                if language == "hi" and script == "roman":
-                    return "Kripya apni janm jaankari bheje."
+            if scope == "family":
+                StateManager.update_session(user_id, step="profile_name")
+                return ProfileManager.profile_name_prompt(language, script)
 
-                return "Please send your birth details."
+            return {
+                "text": ProfileManager.declaration_prompt(language, script),
+                "keyboard": DialogEngine._profile_scope_menu(language, script),
+            }
+
+        if session.step == "profile_name":
+            language, script = DialogEngine._coerce_language_script(session, text)
+            profile_name = str(text or "").strip()
+
+            if not profile_name or profile_name.startswith("/"):
+                return ProfileManager.profile_name_prompt(language, script)
+
+            StateManager.update_session(
+                user_id,
+                pending_profile_name=profile_name,
+                active_profile_name=profile_name,
+                step="birthdata",
+            )
+            return DialogEngine._birth_details_prompt(language, script, profile_name)
 
         if session.step == "birthdata":
+            language, script = DialogEngine._coerce_language_script(session, text)
             parsed = BirthDataParser.parse_birth_data(text)
 
             dob = parsed.get("date")
@@ -414,123 +454,167 @@ class DialogEngine:
             place = parsed.get("place")
 
             if not dob or not tob or not place:
-                if language == "hi" and script == "roman":
-                    return "Kripya apni janm jaankari bheje."
+                return DialogEngine._birth_data_retry_prompt(language, script)
 
-                if language == "hi":
-                    return "कृपया अपनी जन्म जानकारी भेजें।"
+            profile_name = (
+                getattr(session, "pending_profile_name", None)
+                or getattr(session, "active_profile_name", None)
+                or ProfileManager.default_profile_name(language, script)
+            )
 
-                return "Please send your birth details."
+            profiles = ProfileManager.parse_profiles(getattr(session, "profiles", None))
+            max_allowed = ProfileManager.max_profiles(session)
+            profiles, saved, limit_hit = ProfileManager.upsert_profile(
+                profiles,
+                {
+                    "name": profile_name,
+                    "dob": dob,
+                    "tob": tob,
+                    "place": place,
+                },
+                max_allowed,
+            )
+
+            if limit_hit:
+                return ProfileManager.limit_message(language, script)
+
+            age = calculate_age(dob)
+            life_stage = detect_life_stage(age)
 
             StateManager.update_session(
                 user_id,
                 dob=dob,
                 tob=tob,
                 place=place,
+                age=age,
+                life_stage=life_stage,
+                profiles=ProfileManager.serialize_profiles(profiles),
+                active_profile_name=profile_name,
+                pending_profile_name=None,
                 step="question",
-                last_domain=None
+                last_domain=None,
+                conversation_phase=ConsultationEngine.STAGE_CHART_READING,
+                last_followup_question=None,
+                theme_shown=False,
+                chart_data=None,
             )
-            language, script = DialogEngine._coerce_language_script(session, text)
 
             return {
                 "text": DialogEngine._domain_prompt(language, script),
-                "keyboard": DialogEngine._domain_menu(language, script)
+                "keyboard": DialogEngine._domain_menu(language, script),
             }
 
         if session.step == "question":
+            language, script = DialogEngine._coerce_language_script(session, text)
             domain = IntentRouter.detect_domain(text)
+            last_domain = getattr(session, "last_domain", None)
+            current_stage = (
+                getattr(session, "conversation_phase", None)
+                or ConsultationEngine.STAGE_CHART_READING
+            )
 
-            if not domain:
-                last_domain = getattr(session, "last_domain", None)
-                is_followup = FollowupRouter.is_followup_answer(
-                    text,
-                    getattr(session, "last_followup_question", None),
-                    last_domain
-                )
-
-                if last_domain and is_followup:
-                    domain = last_domain
-                else:
-                    if language == "hi" and script == "roman":
-                        return {
-                            "text": "Kripya koi vishay chune ya apna prashna puchhe.",
-                            "keyboard": DOMAIN_MENU_ROM
-                        }
-
-                    if language == "hi":
-                        return {
-                            "text": "कृपया कोई विषय चुनें या अपना प्रश्न पूछें।",
-                            "keyboard": DOMAIN_MENU_DEV
-                        }
-
+            if domain:
+                if last_domain != domain:
+                    current_stage = ConsultationEngine.STAGE_CHART_READING
+            else:
+                if not last_domain:
                     return {
-                        "text": "Choose a topic or ask your question.",
-                        "keyboard": DOMAIN_MENU_EN
+                        "text": DialogEngine._domain_not_detected(language, script),
+                        "keyboard": DialogEngine._domain_menu(language, script),
                     }
+                domain = last_domain
 
-            StateManager.update_session(user_id, last_domain=domain)
+            detected_goal = DialogEngine._detect_goal(text)
+            effective_goal = detected_goal or getattr(session, "user_goal", None)
+
+            if detected_goal:
+                StateManager.update_session(user_id, user_goal=detected_goal)
 
             chart = DialogEngine.load_chart(user_id, session)
-
-            if not getattr(session, "theme_shown", False):
-                opening = ConsultationEngine.build_opening(chart, language, script)
-                StateManager.update_session(user_id, theme_shown=True)
-            else:
-                opening = None
-
-            domain_data = chart.get("domain_scores", {}).get(domain, {})
+            domain_data = dict(chart.get("domain_scores", {}).get(domain, {}))
             domain_data["timing_focus"] = bool(TimingRouter.is_timing_question(text))
+            current_dasha = chart.get("current_dasha", {})
+            transits = chart.get("transit", {})
+
+            consultation_context = ConsultationEngine.prepare_consultation_context(
+                domain_data=domain_data,
+                age=getattr(session, "age", None),
+                life_stage=getattr(session, "life_stage", None),
+                current_dasha=current_dasha,
+                transits=transits,
+                user_goal=effective_goal,
+            )
 
             prompt = AstrologerPrompts.build_domain_prompt(
                 domain,
-                domain_data,
+                consultation_context["prompt_domain_data"],
                 language,
                 script,
                 user_id,
-                text
+                text,
             )
 
             try:
                 ai_output = ask_ai("", prompt)
             except Exception:
-                if language == "hi" and script == "roman":
+                if DialogEngine._is_hi_rom(language, script):
                     return "Server se connection issue aa raha hai. Kripya thodi der baad phir se puchhe."
 
-                if language == "hi":
+                if DialogEngine._is_hi_dev(language, script):
                     return "इस समय सर्वर से कनेक्शन में समस्या है। कृपया थोड़ी देर बाद फिर से पूछें।"
 
                 return "I'm facing a temporary server connection issue. Please try again in a moment."
 
-            formatted_reply = AstrologyResponseTemplate.build_response(
+            followup_question = ConsultationEngine.default_followup_question(
+                domain,
+                language,
+                script,
+                current_stage,
+            )
+
+            reply = ConsultationEngine.build_consultation_reply(
                 domain=domain,
                 domain_data=domain_data,
                 ai_guidance=ai_output,
                 language=language,
-                script=script
+                script=script,
+                stage=current_stage,
+                age=consultation_context["age"],
+                life_stage=consultation_context["life_stage"],
+                user_goal=consultation_context["user_goal"],
+                current_dasha=consultation_context["current_dasha"],
+                transits=consultation_context["transits"],
+                followup_question=followup_question,
             )
 
-            # Apply localization after AI output and deterministic formatting.
-            translated_reply = PlanetTranslator.translate(
-                formatted_reply,
-                language,
-                script
-            )
-
-            reply = AstrologyResponseTemplate.build(
-                domain=domain,
-                domain_data=domain_data,
-                llm_response=translated_reply,
-                language=language,
-                script=script
-            )
+            opening = ""
+            if not getattr(session, "theme_shown", False):
+                opening = ConsultationEngine.build_opening(chart, language, script)
 
             if opening:
-                opening = PlanetTranslator.translate(opening, language, script)
                 reply = f"{opening}\n\n{reply}"
 
-            StateManager.update_session(user_id, last_domain=domain)
-            MemoryEngine.add_bot_message(user_id, reply)
+            reply, persona_added = AstrologerPersona.apply_once(
+                reply,
+                language,
+                script,
+                bool(getattr(session, "persona_introduced", False)),
+            )
+            reply = PlanetTranslator.translate(reply, language, script)
 
+            next_stage = ConsultationEngine.next_stage(current_stage)
+            StateManager.update_session(
+                user_id,
+                last_domain=domain,
+                conversation_phase=next_stage,
+                last_followup_question=followup_question,
+                theme_shown=True,
+                persona_introduced=bool(getattr(session, "persona_introduced", False))
+                or persona_added,
+                user_goal=effective_goal,
+            )
+
+            MemoryEngine.add_bot_message(user_id, reply)
             return reply
 
         return "Type /start to begin."

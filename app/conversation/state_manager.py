@@ -1,10 +1,9 @@
 from types import SimpleNamespace
 
-from app.database import SessionLocal, Session
+from app.database import Session, SessionLocal
 
 
 class StateManager:
-
     SESSION_FIELDS = tuple(column.name for column in Session.__table__.columns)
     SESSION_FIELDS_SET = set(SESSION_FIELDS)
 
@@ -13,10 +12,7 @@ class StateManager:
         if not session:
             return None
 
-        data = {
-            field: getattr(session, field)
-            for field in StateManager.SESSION_FIELDS
-        }
+        data = {field: getattr(session, field) for field in StateManager.SESSION_FIELDS}
         return SimpleNamespace(**data)
 
     @staticmethod
