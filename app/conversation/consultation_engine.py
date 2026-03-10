@@ -192,29 +192,38 @@ class ConsultationEngine:
         if ConsultationEngine._is_hi_dev(language, script):
             if stage == ConsultationEngine.STAGE_CHART_READING:
                 return (
-                    f"{domain} विषय में अभी {primary_driver} का प्रभाव सबसे मजबूत दिख रहा है, "
-                    f"और {risk_factor} से जुड़े फैसलों में सावधानी ज़रूरी है। "
+                    f"{domain} विषय में अभी {primary_driver} का प्रभाव सबसे मजबूत दिख रहा है। "
+                    f"{risk_factor} से जुड़े फैसलों में सावधानी ज़रूरी है। "
                     f"चार्ट का momentum अभी {momentum} है।"
                 )
-            return "पहले बताए गए ग्रह-संकेत को दोहराने की जगह अब उसी संकेत को आपकी स्थिति में लागू करते हैं।"
+            return (
+                f"{domain} विषय में {primary_driver} का संकेत अभी भी मुख्य दिशा दे रहा है। "
+                f"अब इस संकेत को सीधे आपकी वर्तमान स्थिति पर लागू करना बेहतर रहेगा।"
+            )
 
         if ConsultationEngine._is_hi_rom(language, script):
             if stage == ConsultationEngine.STAGE_CHART_READING:
                 return (
-                    f"{domain} area mein abhi {primary_driver} ka prabhav sabse strong dikh raha hai, "
-                    f"aur {risk_factor} se jude decisions mein caution zaroori hai. "
+                    f"{domain} area mein abhi {primary_driver} ka prabhav sabse strong dikh raha hai. "
+                    f"{risk_factor} se jude decisions mein caution zaroori hai. "
                     f"Chart momentum abhi {momentum} hai."
                 )
-            return "Pehle wale chart interpretation ko repeat kiye bina ab usi signal ko aapki situation mein apply karte hain."
+            return (
+                f"{domain} area mein {primary_driver} ka signal abhi bhi main direction de raha hai. "
+                f"Ab is signal ko aapki current situation par directly apply karna better rahega."
+            )
 
         if stage == ConsultationEngine.STAGE_CHART_READING:
             return (
-                f"In {domain}, {primary_driver} is the strongest influence right now, "
-                f"so be careful around {risk_factor}. "
+                f"In {domain}, {primary_driver} is the strongest influence right now. "
+                f"Be careful around {risk_factor}. "
                 f"The current momentum reads as {momentum}."
             )
 
-        return "Instead of repeating the base chart reading, we now apply that same signal to your current context."
+        return (
+            f"In {domain}, {primary_driver} is still the lead influence in your chart pattern. "
+            "Now we should apply that same signal directly to your present situation."
+        )
 
     @staticmethod
     def _dasha_timing(domain, current_dasha, transits, language, script, primary_driver):
@@ -234,7 +243,7 @@ class ConsultationEngine:
             if primary_driver and primary_driver in transit_data:
                 house = transit_data.get(primary_driver)
                 if house:
-                    line += f" ट्रांजिट में {primary_driver} का प्रभाव भी house {house} से इस विषय को सक्रिय कर रहा है।"
+                    line += f" ट्रांजिट में {primary_driver} का प्रभाव house {house} से भी इस विषय को सक्रिय कर रहा है।"
                 else:
                     line += f" ट्रांजिट में {primary_driver} भी इस विषय को सक्रिय कर रहा है।"
 
@@ -274,9 +283,7 @@ class ConsultationEngine:
         return line
 
     @staticmethod
-    def _practical_advice(ai_guidance, language, script, user_goal, stage):
-        llm_line = " ".join(line.strip() for line in str(ai_guidance or "").splitlines() if line.strip())
-
+    def _practical_advice(language, script, user_goal, stage):
         if ConsultationEngine._is_hi_dev(language, script):
             stage_tip = {
                 ConsultationEngine.STAGE_CHART_READING: "अभी जल्दबाज़ी में बड़ा निर्णय न लें।",
@@ -287,9 +294,9 @@ class ConsultationEngine:
 
             goal_line = ""
             if user_goal:
-                goal_line = f" अपने {str(user_goal).replace('_', ' ')} लक्ष्य के हिसाब से steps चुनें।"
+                goal_line = f"अपने {str(user_goal).replace('_', ' ')} लक्ष्य के हिसाब से steps चुनें।"
 
-            return f"{stage_tip}{goal_line} {llm_line}".strip()
+            return " ".join(part for part in [stage_tip, goal_line] if part).strip()
 
         if ConsultationEngine._is_hi_rom(language, script):
             stage_tip = {
@@ -301,9 +308,9 @@ class ConsultationEngine:
 
             goal_line = ""
             if user_goal:
-                goal_line = f" Apne {str(user_goal).replace('_', ' ')} goal ke hisaab se steps choose kariye."
+                goal_line = f"Apne {str(user_goal).replace('_', ' ')} goal ke hisaab se steps choose kariye."
 
-            return f"{stage_tip}{goal_line} {llm_line}".strip()
+            return " ".join(part for part in [stage_tip, goal_line] if part).strip()
 
         stage_tip = {
             ConsultationEngine.STAGE_CHART_READING: "Avoid a rushed big move right now.",
@@ -314,9 +321,9 @@ class ConsultationEngine:
 
         goal_line = ""
         if user_goal:
-            goal_line = f" Choose actions aligned with your {str(user_goal).replace('_', ' ')} goal."
+            goal_line = f"Choose actions aligned with your {str(user_goal).replace('_', ' ')} goal."
 
-        return f"{stage_tip}{goal_line} {llm_line}".strip()
+        return " ".join(part for part in [stage_tip, goal_line] if part).strip()
 
     @staticmethod
     def default_followup_question(domain, language, script, stage):
@@ -347,10 +354,9 @@ class ConsultationEngine:
         return mapping.get(stage, "Would you like to go deeper in this area?")
 
     @staticmethod
-    def build_consultation_reply(
+    def generate(
         domain,
         domain_data,
-        ai_guidance,
         language,
         script,
         stage,
@@ -359,28 +365,55 @@ class ConsultationEngine:
         user_goal,
         current_dasha,
         transits,
-        followup_question,
+        followup_question=None,
+        persona_intro="",
+        opening_text="",
     ):
         domain_data = domain_data or {}
         primary_driver = str(domain_data.get("primary_driver") or "").strip() or "Saturn"
 
-        parts = []
+        life_stage_parts = [
+            ConsultationEngine._stage_bridge(stage, language, script),
+            ConsultationEngine._life_stage_context(age, life_stage, language, script),
+            ConsultationEngine._goal_context(user_goal, language, script),
+        ]
+        life_stage_text = " ".join(
+            part.strip() for part in life_stage_parts if part and part.strip()
+        ).strip()
 
-        stage_bridge = ConsultationEngine._stage_bridge(stage, language, script)
-        life_stage_line = ConsultationEngine._life_stage_context(age, life_stage, language, script)
-        goal_line = ConsultationEngine._goal_context(user_goal, language, script)
-        reasoning_line = ConsultationEngine._chart_reasoning(domain, domain_data, language, script, stage)
-        timing_line = ConsultationEngine._dasha_timing(domain, current_dasha, transits, language, script, primary_driver)
-        advice_line = ConsultationEngine._practical_advice(ai_guidance, language, script, user_goal, stage)
-        question_line = followup_question or ConsultationEngine.default_followup_question(domain, language, script, stage)
+        reasoning_parts = []
+        if opening_text and opening_text.strip():
+            reasoning_parts.append(opening_text.strip())
+        reasoning_parts.append(
+            ConsultationEngine._chart_reasoning(domain, domain_data, language, script, stage)
+        )
 
-        for line in [stage_bridge, life_stage_line, goal_line]:
-            if line:
-                parts.append(line)
+        astrology_reasoning = " ".join(
+            part.strip() for part in reasoning_parts if part and part.strip()
+        ).strip()
 
-        parts.append(reasoning_line)
-        parts.append(timing_line)
-        parts.append(advice_line)
-        parts.append(question_line)
+        timing_text = ConsultationEngine._dasha_timing(
+            domain,
+            current_dasha,
+            transits,
+            language,
+            script,
+            primary_driver,
+        )
 
-        return "\n\n".join(part.strip() for part in parts if part and part.strip())
+        advice_text = ConsultationEngine._practical_advice(language, script, user_goal, stage)
+        resolved_followup = followup_question or ConsultationEngine.default_followup_question(
+            domain,
+            language,
+            script,
+            stage,
+        )
+
+        return {
+            "persona_intro": str(persona_intro or "").strip(),
+            "life_stage_text": life_stage_text,
+            "astrology_reasoning": astrology_reasoning,
+            "timing_text": timing_text,
+            "advice_text": advice_text,
+            "followup_question": resolved_followup,
+        }

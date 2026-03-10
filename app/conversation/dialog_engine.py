@@ -10,6 +10,7 @@ from app.conversation.memory_engine import MemoryEngine
 from app.conversation.planet_translator import PlanetTranslator
 from app.conversation.profile_manager import ProfileManager
 from app.conversation.prompt_builder import AstrologerPrompts
+from app.conversation.response_assembler import ResponseAssembler
 from app.conversation.state_manager import StateManager
 from app.conversation.timing_router import TimingRouter
 from app.conversation.life_stage_detector import detect as detect_life_stage
@@ -536,6 +537,41 @@ class DialogEngine:
             current_dasha = chart.get("current_dasha", {})
             transits = chart.get("transit", {})
 
+            opening_text = ""
+            if not getattr(session, "theme_shown", False):
+                opening_text = ConsultationEngine.build_opening(chart, language, script)
+
+            persona_intro, persona_added = AstrologerPersona.apply_once(
+                "",
+                language,
+                script,
+                bool(getattr(session, "persona_introduced", False)),
+            )
+            persona_intro = str(persona_intro or "").strip()
+
+            followup_question = ConsultationEngine.default_followup_question(
+                domain,
+                language,
+                script,
+                current_stage,
+            )
+
+            consultation = ConsultationEngine.generate(
+                domain=domain,
+                domain_data=domain_data,
+                language=language,
+                script=script,
+                stage=current_stage,
+                age=getattr(session, "age", None),
+                life_stage=getattr(session, "life_stage", None),
+                user_goal=effective_goal,
+                current_dasha=current_dasha,
+                transits=transits,
+                followup_question=followup_question,
+                persona_intro=persona_intro,
+                opening_text=opening_text,
+            )
+
             consultation_context = ConsultationEngine.prepare_consultation_context(
                 domain_data=domain_data,
                 age=getattr(session, "age", None),
@@ -552,10 +588,11 @@ class DialogEngine:
                 script,
                 user_id,
                 text,
+                structured_context=consultation,
             )
 
             try:
-                ai_output = ask_ai("", prompt)
+                llm_text = ask_ai("", prompt)
             except Exception:
                 if DialogEngine._is_hi_rom(language, script):
                     return "Server se connection issue aa raha hai. Kripya thodi der baad phir se puchhe."
@@ -565,41 +602,20 @@ class DialogEngine:
 
                 return "I'm facing a temporary server connection issue. Please try again in a moment."
 
-            followup_question = ConsultationEngine.default_followup_question(
-                domain,
-                language,
-                script,
-                current_stage,
+            reply = ResponseAssembler.assemble_response(
+                consultation["persona_intro"],
+                consultation["life_stage_text"],
+                consultation["astrology_reasoning"],
+                consultation["timing_text"],
+                consultation["advice_text"],
+                llm_text,
             )
 
-            reply = ConsultationEngine.build_consultation_reply(
-                domain=domain,
-                domain_data=domain_data,
-                ai_guidance=ai_output,
-                language=language,
-                script=script,
-                stage=current_stage,
-                age=consultation_context["age"],
-                life_stage=consultation_context["life_stage"],
-                user_goal=consultation_context["user_goal"],
-                current_dasha=consultation_context["current_dasha"],
-                transits=consultation_context["transits"],
-                followup_question=followup_question,
-            )
+            followup_text = str(consultation.get("followup_question") or "").strip()
+            followup_key = followup_text.lower().rstrip("?.! ")
+            if followup_text and followup_key and followup_key not in reply.lower():
+                reply = f"{reply} {followup_text}".strip()
 
-            opening = ""
-            if not getattr(session, "theme_shown", False):
-                opening = ConsultationEngine.build_opening(chart, language, script)
-
-            if opening:
-                reply = f"{opening}\n\n{reply}"
-
-            reply, persona_added = AstrologerPersona.apply_once(
-                reply,
-                language,
-                script,
-                bool(getattr(session, "persona_introduced", False)),
-            )
             reply = PlanetTranslator.translate(reply, language, script)
 
             next_stage = ConsultationEngine.next_stage(current_stage)
@@ -607,7 +623,7 @@ class DialogEngine:
                 user_id,
                 last_domain=domain,
                 conversation_phase=next_stage,
-                last_followup_question=followup_question,
+                last_followup_question=consultation.get("followup_question"),
                 theme_shown=True,
                 persona_introduced=bool(getattr(session, "persona_introduced", False))
                 or persona_added,
