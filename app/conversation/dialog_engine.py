@@ -289,7 +289,7 @@ class DialogEngine:
                 language=None,
                 script=None,
                 last_domain=None,
-                conversation_phase=ConsultationEngine.STATE_DOMAIN_ENTRY,
+                conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
                 last_followup_question=None,
                 theme_shown=False,
                 persona_introduced=False,
@@ -387,7 +387,7 @@ class DialogEngine:
                     user_id,
                     step="profile_scope",
                     pending_profile_name=None,
-                    conversation_phase=ConsultationEngine.STATE_DOMAIN_ENTRY,
+                    conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
                     last_followup_question=None,
                     chart_data=None,
                 )
@@ -490,7 +490,7 @@ class DialogEngine:
                 pending_profile_name=None,
                 step="question",
                 last_domain=None,
-                conversation_phase=ConsultationEngine.STATE_DOMAIN_ENTRY,
+                conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
                 last_followup_question=None,
                 theme_shown=False,
                 chart_data=None,
@@ -503,17 +503,20 @@ class DialogEngine:
 
         if session.step == "question":
             language, script = DialogEngine._coerce_language_script(session, text)
-            domain = IntentRouter.detect_domain(text)
             last_domain = getattr(session, "last_domain", None)
+            domain = (
+                ConsultationEngine.detect_domain(text, current_domain=last_domain)
+                or IntentRouter.detect_domain(text)
+            )
             domain_switched = False
             current_stage = (
                 getattr(session, "conversation_phase", None)
-                or ConsultationEngine.STATE_DOMAIN_ENTRY
+                or ConsultationEngine.DOMAIN_ENTRY
             )
 
             if domain:
                 if last_domain != domain:
-                    current_stage = ConsultationEngine.STATE_DOMAIN_ENTRY
+                    current_stage = ConsultationEngine.DOMAIN_ENTRY
                     domain_switched = True
             else:
                 if not last_domain:
@@ -530,7 +533,8 @@ class DialogEngine:
                 StateManager.update_session(user_id, user_goal=detected_goal)
 
             chart = DialogEngine.load_chart(user_id, session)
-            domain_data = dict(chart.get("domain_scores", {}).get(domain, {}))
+            score_domain = ConsultationEngine.score_domain(domain) or domain
+            domain_data = dict(chart.get("domain_scores", {}).get(score_domain, {}))
             domain_data["timing_focus"] = bool(TimingRouter.is_timing_question(text))
             current_dasha = chart.get("current_dasha", {})
             transits = chart.get("transit", {})
