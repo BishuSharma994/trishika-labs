@@ -289,7 +289,7 @@ class DialogEngine:
                 language=None,
                 script=None,
                 last_domain=None,
-                conversation_phase=ConsultationEngine.STAGE_CHART_READING,
+                conversation_phase=ConsultationEngine.STATE_DOMAIN_ENTRY,
                 last_followup_question=None,
                 theme_shown=False,
                 persona_introduced=False,
@@ -387,7 +387,7 @@ class DialogEngine:
                     user_id,
                     step="profile_scope",
                     pending_profile_name=None,
-                    conversation_phase=ConsultationEngine.STAGE_CHART_READING,
+                    conversation_phase=ConsultationEngine.STATE_DOMAIN_ENTRY,
                     last_followup_question=None,
                     chart_data=None,
                 )
@@ -490,7 +490,7 @@ class DialogEngine:
                 pending_profile_name=None,
                 step="question",
                 last_domain=None,
-                conversation_phase=ConsultationEngine.STAGE_CHART_READING,
+                conversation_phase=ConsultationEngine.STATE_DOMAIN_ENTRY,
                 last_followup_question=None,
                 theme_shown=False,
                 chart_data=None,
@@ -508,12 +508,12 @@ class DialogEngine:
             domain_switched = False
             current_stage = (
                 getattr(session, "conversation_phase", None)
-                or ConsultationEngine.STAGE_CHART_READING
+                or ConsultationEngine.STATE_DOMAIN_ENTRY
             )
 
             if domain:
                 if last_domain != domain:
-                    current_stage = ConsultationEngine.STAGE_CHART_READING
+                    current_stage = ConsultationEngine.STATE_DOMAIN_ENTRY
                     domain_switched = True
             else:
                 if not last_domain:
@@ -549,18 +549,26 @@ class DialogEngine:
                 persona_introduced=bool(getattr(session, "persona_introduced", False)),
                 chart=chart,
                 theme_shown=bool(getattr(session, "theme_shown", False)) and not domain_switched,
+                user_text=text,
+                session_state_blob=getattr(session, "last_followup_question", None),
+                domain_switched=domain_switched,
             )
 
             reply = consultation.get("text", "")
             reply = PlanetTranslator.translate(reply, language, script)
 
-            next_stage = ConsultationEngine.next_stage(current_stage)
+            next_stage = consultation.get("next_stage") or ConsultationEngine.next_stage(current_stage)
+            persisted_consultation_state = (
+                consultation.get("state_blob")
+                or consultation.get("followup_question")
+            )
             StateManager.update_session(
                 user_id,
                 last_domain=domain,
                 conversation_phase=next_stage,
-                last_followup_question=consultation.get("followup_question"),
-                theme_shown=True,
+                last_followup_question=persisted_consultation_state,
+                theme_shown=bool(getattr(session, "theme_shown", False))
+                or bool(consultation.get("theme_used")),
                 persona_introduced=bool(getattr(session, "persona_introduced", False))
                 or bool(consultation.get("persona_added")),
                 user_goal=effective_goal,
