@@ -4,6 +4,7 @@ from datetime import datetime
 from app.astro_engine import ParashariEngine
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.intent_router import IntentRouter
+from app.conversation.language_engine import LanguageEngine
 from app.conversation.memory_engine import MemoryEngine
 from app.conversation.planet_translator import PlanetTranslator
 from app.conversation.profile_manager import ProfileManager
@@ -152,6 +153,16 @@ class DialogEngine:
         return language, script
 
     @staticmethod
+    def _mode_from_language_script(language, script):
+        if language == "hi" and script == "roman":
+            return LanguageEngine.HINDI_ROMAN
+
+        if language == "hi" and script == "devanagari":
+            return LanguageEngine.HINDI_DEVANAGARI
+
+        return LanguageEngine.ENGLISH
+
+    @staticmethod
     def _birth_details_prompt(language, script, profile_name):
         target = profile_name or "this profile"
 
@@ -288,6 +299,8 @@ class DialogEngine:
                 step="language",
                 language=None,
                 script=None,
+                language_mode=None,
+                language_confirmed=False,
                 last_domain=None,
                 conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
                 last_followup_question=None,
@@ -312,6 +325,8 @@ class DialogEngine:
                     user_id,
                     language="hi",
                     script="roman",
+                    language_mode=LanguageEngine.HINDI_ROMAN,
+                    language_confirmed=True,
                     step="menu",
                     last_domain=None,
                 )
@@ -325,6 +340,8 @@ class DialogEngine:
                     user_id,
                     language="en",
                     script="latin",
+                    language_mode=LanguageEngine.ENGLISH,
+                    language_confirmed=True,
                     step="menu",
                     last_domain=None,
                 )
@@ -338,6 +355,8 @@ class DialogEngine:
                     user_id,
                     language="hi",
                     script="devanagari",
+                    language_mode=LanguageEngine.HINDI_DEVANAGARI,
+                    language_confirmed=True,
                     step="menu",
                     last_domain=None,
                 )
@@ -351,6 +370,8 @@ class DialogEngine:
                     user_id,
                     language="hi",
                     script="roman",
+                    language_mode=LanguageEngine.HINDI_ROMAN,
+                    language_confirmed=True,
                     step="menu",
                     last_domain=None,
                 )
@@ -358,6 +379,66 @@ class DialogEngine:
                     "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
                     "keyboard": MAIN_MENU_ROM,
                 }
+
+            language_result = LanguageEngine.handle_language(session, text)
+            if language_result:
+                update_fields = {}
+
+                mode = language_result.get("language_mode")
+                confirmed = language_result.get("language_confirmed")
+                lang = language_result.get("language")
+                lang_script = language_result.get("script")
+                state_blob = language_result.get("state_blob")
+
+                if mode in {
+                    LanguageEngine.ENGLISH,
+                    LanguageEngine.HINDI_ROMAN,
+                    LanguageEngine.HINDI_DEVANAGARI,
+                }:
+                    update_fields["language_mode"] = mode
+
+                if isinstance(confirmed, bool):
+                    update_fields["language_confirmed"] = confirmed
+
+                if lang in {"en", "hi"}:
+                    update_fields["language"] = lang
+                    language = lang
+
+                if lang_script in {"latin", "roman", "devanagari"}:
+                    update_fields["script"] = lang_script
+                    script = lang_script
+
+                if state_blob:
+                    update_fields["last_followup_question"] = state_blob
+
+                if update_fields:
+                    StateManager.update_session(user_id, **update_fields)
+                    for key, value in update_fields.items():
+                        setattr(session, key, value)
+
+                if language_result.get("response"):
+                    reply = str(language_result.get("response") or "")
+                    MemoryEngine.add_bot_message(user_id, reply)
+                    return reply
+
+                if language_result.get("language_confirmed"):
+                    StateManager.update_session(user_id, step="menu")
+                    if DialogEngine._is_hi_dev(language, script):
+                        return {
+                            "text": "नमस्ते।\n\nआप कैसे शुरू करना चाहेंगे?",
+                            "keyboard": MAIN_MENU_DEV,
+                        }
+
+                    if DialogEngine._is_hi_rom(language, script):
+                        return {
+                            "text": "Namaste.\n\nAap kaise shuru karna chahenge?",
+                            "keyboard": MAIN_MENU_ROM,
+                        }
+
+                    return {
+                        "text": "Welcome.\n\nHow would you like to begin?",
+                        "keyboard": MAIN_MENU_EN,
+                    }
 
             return {
                 "text": "Please choose a language / कृपया भाषा चुनें",
@@ -489,6 +570,8 @@ class DialogEngine:
                 active_profile_name=profile_name,
                 pending_profile_name=None,
                 step="question",
+                language_mode=DialogEngine._mode_from_language_script(language, script),
+                language_confirmed=False,
                 last_domain=None,
                 conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
                 last_followup_question=None,
@@ -503,6 +586,47 @@ class DialogEngine:
 
         if session.step == "question":
             language, script = DialogEngine._coerce_language_script(session, text)
+            language_result = LanguageEngine.handle_language(session, text)
+            if language_result:
+                update_fields = {}
+
+                mode = language_result.get("language_mode")
+                confirmed = language_result.get("language_confirmed")
+                lang = language_result.get("language")
+                lang_script = language_result.get("script")
+                state_blob = language_result.get("state_blob")
+
+                if mode in {
+                    LanguageEngine.ENGLISH,
+                    LanguageEngine.HINDI_ROMAN,
+                    LanguageEngine.HINDI_DEVANAGARI,
+                }:
+                    update_fields["language_mode"] = mode
+
+                if isinstance(confirmed, bool):
+                    update_fields["language_confirmed"] = confirmed
+
+                if lang in {"en", "hi"}:
+                    update_fields["language"] = lang
+                    language = lang
+
+                if lang_script in {"latin", "roman", "devanagari"}:
+                    update_fields["script"] = lang_script
+                    script = lang_script
+
+                if state_blob:
+                    update_fields["last_followup_question"] = state_blob
+
+                if update_fields:
+                    StateManager.update_session(user_id, **update_fields)
+                    for key, value in update_fields.items():
+                        setattr(session, key, value)
+
+                if language_result.get("response"):
+                    reply = str(language_result.get("response") or "")
+                    MemoryEngine.add_bot_message(user_id, reply)
+                    return reply
+
             last_domain = getattr(session, "last_domain", None)
             domain = (
                 ConsultationEngine.detect_domain(text, current_domain=last_domain)
@@ -554,12 +678,15 @@ class DialogEngine:
                 chart=chart,
                 theme_shown=bool(getattr(session, "theme_shown", False)) and not domain_switched,
                 user_text=text,
-                session_state_blob=getattr(session, "last_followup_question", None),
+                session_state_blob=language_result.get("state_blob")
+                if language_result and language_result.get("state_blob")
+                else getattr(session, "last_followup_question", None),
                 domain_switched=domain_switched,
             )
 
             reply = consultation.get("text", "")
             reply = PlanetTranslator.translate(reply, language, script)
+            reply = LanguageEngine.enforce_response_language(session, reply)
 
             next_stage = consultation.get("next_stage") or ConsultationEngine.next_stage(current_stage)
             persisted_consultation_state = (
