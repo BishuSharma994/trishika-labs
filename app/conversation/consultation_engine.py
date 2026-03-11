@@ -111,6 +111,64 @@ class ConsultationEngine:
             return "Current relationship harmony stable hai, mixed hai, ya stress mein hai?"
         return "Is your current relationship harmony stable, mixed, or under stress?"
 
+    @staticmethod
+    def _localized(language, script, en, hi_rom, hi_dev):
+        if ConsultationEngine._is_hi_dev(language, script):
+            return hi_dev
+        if ConsultationEngine._is_hi_rom(language, script):
+            return hi_rom
+        return en
+
+    @staticmethod
+    def _status_noted_text(status, language, script):
+        return ConsultationEngine._localized(
+            language,
+            script,
+            f"Noted. Current status: {status}.",
+            f"Theek hai. Aapki current status: {status}.",
+            f"ठीक है। आपकी current स्थिति: {status}।",
+        )
+
+    @staticmethod
+    def _diagnostic_stage_text(language, script):
+        return ConsultationEngine._localized(
+            language,
+            script,
+            "Based on your chart signals and what you shared, the situation looks workable but requires patience.",
+            "Aapke chart signals aur aapki baat ke hisaab se situation workable lag rahi hai, lekin patience rakhna zaroori hoga.",
+            "आपकी कुंडली के संकेतों और आपकी बात के अनुसार स्थिति संभाली जा सकती है, लेकिन धैर्य रखना जरूरी होगा।",
+        )
+
+    @staticmethod
+    def _interpretation_stage_text(language, script):
+        return ConsultationEngine._localized(
+            language,
+            script,
+            "Planetary combinations suggest that decisions in this phase should be slow and well-structured.",
+            "Planetary combinations yeh suggest karte hain ki is phase mein decisions dheere aur well-structured tareeke se lene chahiye.",
+            "ग्रह संयोजन संकेत देते हैं कि इस चरण में निर्णय धीरे और सुव्यवस्थित तरीके से लेने चाहिए।",
+        )
+
+    @staticmethod
+    def _guidance_stage_text(language, script):
+        return ConsultationEngine._localized(
+            language,
+            script,
+            "Focus on improving communication and avoid reacting impulsively.",
+            "Communication improve karne par focus rakhein aur impulsive reaction se bachein.",
+            "संचार बेहतर करने पर ध्यान दें और आवेग में प्रतिक्रिया देने से बचें।",
+        )
+
+    @staticmethod
+    def _next_question_text(language, script):
+        return ConsultationEngine._localized(
+            language,
+            script,
+            "Share your next question.",
+            "Apna agla sawal share kijiye.",
+            "अपना अगला सवाल साझा कीजिए।",
+        )
+
     # --------------------------------------------------
 
     @staticmethod
@@ -242,9 +300,10 @@ class ConsultationEngine:
             memory["status"] = status
 
             question = ConsultationEngine._marriage_diagnostic_prompt(language, script)
+            status_noted = ConsultationEngine._status_noted_text(status, language, script)
 
             return {
-                "text": f"Noted. Current status: {status}.\n\n{question}",
+                "text": f"{status_noted}\n\n{question}",
                 "next_stage": ConsultationEngine.DIAGNOSTIC,
                 "state_blob": ConsultationEngine.dump_state(state),
             }
@@ -257,10 +316,7 @@ class ConsultationEngine:
 
             memory["diagnostic"] = user_text
 
-            text = (
-                "Based on your chart signals and what you shared, "
-                "the situation looks workable but requires patience."
-            )
+            text = ConsultationEngine._diagnostic_stage_text(language, script)
 
             return {
                 "text": text,
@@ -274,10 +330,7 @@ class ConsultationEngine:
 
         if stage == ConsultationEngine.INTERPRETATION:
 
-            text = (
-                "Planetary combinations suggest that decisions in this phase "
-                "should be slow and well-structured."
-            )
+            text = ConsultationEngine._interpretation_stage_text(language, script)
 
             return {
                 "text": text,
@@ -291,9 +344,7 @@ class ConsultationEngine:
 
         if stage == ConsultationEngine.GUIDANCE:
 
-            text = (
-                "Focus on improving communication and avoid reacting impulsively."
-            )
+            text = ConsultationEngine._guidance_stage_text(language, script)
 
             return {
                 "text": text,
@@ -304,7 +355,7 @@ class ConsultationEngine:
         # ------------------------------------------
 
         return {
-            "text": "Share your next question.",
+            "text": ConsultationEngine._next_question_text(language, script),
             "next_stage": ConsultationEngine.ACTION_PLAN,
             "state_blob": ConsultationEngine.dump_state(state),
         }
