@@ -7,98 +7,70 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(bind=engine)
-
 Base = declarative_base()
 
 
 class Session(Base):
-
     __tablename__ = "sessions"
 
-    id = Column(Integer, primary_key=True)
-
-    user_id = Column(String, unique=True)
-
-    step = Column(String, default="start")
-
-    dob = Column(String)
-
-    tob = Column(String)
-
-    place = Column(String)
-
-    language = Column(String)
-
-    script = Column(String)
-    language_mode = Column(String)
-    language_confirmed = Column(Boolean, default=False)
-
-    last_domain = Column(String)
-    conversation_phase = Column(String)
-    last_followup_question = Column(Text)
-    persona_introduced = Column(Boolean, default=False)
-    age = Column(Integer)
-    life_stage = Column(String)
-    user_goal = Column(String)
-    plan_tier = Column(String, default="free")
-    profiles = Column(Text)
-    pending_profile_name = Column(String)
-    active_profile_name = Column(String)
-
-    chart_data = Column(Text)
-
-    theme_shown = Column(Boolean, default=False)
+    id                       = Column(Integer, primary_key=True)
+    user_id                  = Column(String, unique=True)
+    step                     = Column(String, default="start")
+    dob                      = Column(String)
+    tob                      = Column(String)
+    place                    = Column(String)
+    language                 = Column(String)
+    script                   = Column(String)
+    language_mode            = Column(String)
+    language_confirmed       = Column(Boolean, default=False)
+    language_state_blob      = Column(Text)          # ← ADDED
+    consultation_state_blob  = Column(Text)          # ← ADDED
+    last_domain              = Column(String)
+    conversation_phase       = Column(String)
+    last_followup_question   = Column(Text)
+    persona_introduced       = Column(Boolean, default=False)
+    age                      = Column(Integer)
+    life_stage               = Column(String)
+    user_goal                = Column(String)
+    plan_tier                = Column(String, default="free")
+    profiles                 = Column(Text)
+    pending_profile_name     = Column(String)
+    active_profile_name      = Column(String)
+    chart_data               = Column(Text)
+    theme_shown              = Column(Boolean, default=False)
 
 
 def _ensure_schema_updates():
     """Apply lightweight SQLite schema updates for existing local databases."""
     with engine.begin() as conn:
         columns = {
-            row[1]
-            for row in conn.execute(text("PRAGMA table_info(sessions)"))
+            row[1] for row in conn.execute(text("PRAGMA table_info(sessions)"))
         }
+        if not columns:
+            return
 
-        if columns and "script" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN script VARCHAR"))
+        migrations = [
+            ("script",                   "ALTER TABLE sessions ADD COLUMN script VARCHAR"),
+            ("theme_shown",              "ALTER TABLE sessions ADD COLUMN theme_shown BOOLEAN DEFAULT 0"),
+            ("conversation_phase",       "ALTER TABLE sessions ADD COLUMN conversation_phase VARCHAR"),
+            ("last_followup_question",   "ALTER TABLE sessions ADD COLUMN last_followup_question TEXT"),
+            ("persona_introduced",       "ALTER TABLE sessions ADD COLUMN persona_introduced BOOLEAN DEFAULT 0"),
+            ("age",                      "ALTER TABLE sessions ADD COLUMN age INTEGER"),
+            ("life_stage",               "ALTER TABLE sessions ADD COLUMN life_stage VARCHAR"),
+            ("user_goal",                "ALTER TABLE sessions ADD COLUMN user_goal VARCHAR"),
+            ("plan_tier",                "ALTER TABLE sessions ADD COLUMN plan_tier VARCHAR DEFAULT 'free'"),
+            ("profiles",                 "ALTER TABLE sessions ADD COLUMN profiles TEXT"),
+            ("pending_profile_name",     "ALTER TABLE sessions ADD COLUMN pending_profile_name VARCHAR"),
+            ("active_profile_name",      "ALTER TABLE sessions ADD COLUMN active_profile_name VARCHAR"),
+            ("language_mode",            "ALTER TABLE sessions ADD COLUMN language_mode VARCHAR"),
+            ("language_confirmed",       "ALTER TABLE sessions ADD COLUMN language_confirmed BOOLEAN DEFAULT 0"),
+            ("language_state_blob",      "ALTER TABLE sessions ADD COLUMN language_state_blob TEXT"),      # ← ADDED
+            ("consultation_state_blob",  "ALTER TABLE sessions ADD COLUMN consultation_state_blob TEXT"),  # ← ADDED
+        ]
 
-        if columns and "theme_shown" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN theme_shown BOOLEAN DEFAULT 0"))
-
-        if columns and "conversation_phase" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN conversation_phase VARCHAR"))
-
-        if columns and "last_followup_question" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN last_followup_question TEXT"))
-
-        if columns and "persona_introduced" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN persona_introduced BOOLEAN DEFAULT 0"))
-
-        if columns and "age" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN age INTEGER"))
-
-        if columns and "life_stage" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN life_stage VARCHAR"))
-
-        if columns and "user_goal" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN user_goal VARCHAR"))
-
-        if columns and "plan_tier" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN plan_tier VARCHAR DEFAULT 'free'"))
-
-        if columns and "profiles" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN profiles TEXT"))
-
-        if columns and "pending_profile_name" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN pending_profile_name VARCHAR"))
-
-        if columns and "active_profile_name" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN active_profile_name VARCHAR"))
-
-        if columns and "language_mode" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN language_mode VARCHAR"))
-
-        if columns and "language_confirmed" not in columns:
-            conn.execute(text("ALTER TABLE sessions ADD COLUMN language_confirmed BOOLEAN DEFAULT 0"))
+        for col_name, sql in migrations:
+            if col_name not in columns:
+                conn.execute(text(sql))
 
 
 Base.metadata.create_all(engine)
