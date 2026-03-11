@@ -160,7 +160,7 @@ class DialogEngine:
             last_domain = getattr(session, "last_domain", None)
 
             # domain detection
-             domain = DomainRouter.detect(text, current_domain=last_domain)
+            domain = DomainRouter.detect(text, current_domain=last_domain)
 
             if not domain and not last_domain:
                 return "Please choose a topic like career, marriage, finance or health."
