@@ -1,6 +1,8 @@
 import json
 from datetime import datetime
 
+from app.conversation.domain_router import DomainRouter
+from app.conversation.consultation_controller import ConsultationController
 from app.astro_engine import ParashariEngine
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.intent_router import IntentRouter
@@ -158,10 +160,7 @@ class DialogEngine:
             last_domain = getattr(session, "last_domain", None)
 
             # domain detection
-            domain = (
-                ConsultationEngine.detect_domain(text, current_domain=last_domain)
-                or IntentRouter.detect_domain(text)
-            )
+             domain = DomainRouter.detect(text, current_domain=last_domain)
 
             if not domain and not last_domain:
                 return "Please choose a topic like career, marriage, finance or health."
@@ -213,7 +212,7 @@ class DialogEngine:
 
             reply = LanguageEngine.enforce_response_language(session, reply)
 
-            next_stage = consultation.get("next_stage")
+            next_stage = ConsultationController.next_stage(current_stage)
 
             StateManager.update_session(
                 user_id,
