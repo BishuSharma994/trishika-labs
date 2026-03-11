@@ -233,7 +233,10 @@ class DialogEngine:
             reply = PlanetTranslator.translate(reply, lang, script)
             reply = LanguageEngine.enforce_response_language(session, reply)
 
-            next_stage = ConsultationController.next_stage(current_stage)
+            next_stage = (
+                consultation.get("next_stage")
+                or ConsultationController.next_stage(current_stage)
+            )
 
             StateManager.update_session(
                 user_id,
