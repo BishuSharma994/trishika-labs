@@ -22,7 +22,7 @@ class LanguageEngine:
         "yes", "no", "haan", "ok", "okay"
     }
 
-    # ─────────────────────────────────────────────────────────────
+    # -----------------------------------------------------------------
     @staticmethod
     def detect_language(text: Any):
         t = str(text or "").strip()
@@ -33,7 +33,7 @@ class LanguageEngine:
             return LanguageEngine.HINDI_ROMAN
         return LanguageEngine.ENGLISH
 
-    # ─────────────────────────────────────────────────────────────
+    # -----------------------------------------------------------------
     @staticmethod
     def load_state(blob):
         if not blob:
@@ -47,7 +47,7 @@ class LanguageEngine:
     def dump_state(state):
         return json.dumps(state, ensure_ascii=False)
 
-    # ─────────────────────────────────────────────────────────────
+    # -----------------------------------------------------------------
     @staticmethod
     def handle_language(session, user_message):
         text      = str(user_message or "").strip()
@@ -55,41 +55,51 @@ class LanguageEngine:
         mode      = getattr(session, "language_mode", None)
         confirmed = getattr(session, "language_confirmed", False)
 
-        # ── If language is already confirmed, only react to explicit re-selection ──
+        # If language already confirmed, only react to explicit re-selection
         if confirmed:
-            explicit_switches = {"english", "hindi", "हिंदी", "hindi (roman)"}
+            explicit_switches = {"english", "hindi", "\u0939\u093f\u0902\u0926\u0940", "hindi (roman)"}
             if text.lower() not in explicit_switches and text not in explicit_switches:
                 return None
 
-        # ── Map from button text → language mode ──────────────────────────────────
+        # Button text to language mode map
         lang_button_map = {
-            "english":      LanguageEngine.ENGLISH,
-            "हिंदी":        LanguageEngine.HINDI_DEVANAGARI,
-            "hindi (roman)":LanguageEngine.HINDI_ROMAN,
-        }
-        lang_confirm_prompts = {
-            LanguageEngine.ENGLISH: (
-                "You are writing in English.\n\nContinue?\n1 Yes\n2 Hindi Roman\n3 हिंदी"
-            ),
-            LanguageEngine.HINDI_ROMAN: (
-                "Aap Hindi Roman mein baat kar rahe hain.\n\nContinue?\n1 Haan\n2 English\n3 हिंदी"
-            ),
-            LanguageEngine.HINDI_DEVANAGARI: (
-                "आप हिंदी में लिख रहे हैं।\n\nजारी रखें?\n1 हाँ\n2 English\n3 Hindi Roman"
-            ),
+            "english":       LanguageEngine.ENGLISH,
+            "\u0939\u093f\u0902\u0926\u0940": LanguageEngine.HINDI_DEVANAGARI,
+            "hindi (roman)": LanguageEngine.HINDI_ROMAN,
         }
 
-        # ── Step A: User pressed a language button from /start keyboard ───────────
+        # Confirm prompt text shown after user picks a language
+        confirm_texts = {
+            LanguageEngine.ENGLISH:          "You are writing in English.\n\nContinue?",
+            LanguageEngine.HINDI_ROMAN:      "Aap Hindi Roman mein baat kar rahe hain.\n\nContinue?",
+            LanguageEngine.HINDI_DEVANAGARI: "\u0906\u092a \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u0932\u093f\u0916 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964\n\n\u091c\u093e\u0930\u0940 \u0930\u0916\u0947\u0902?",
+        }
+
+        # Confirm keyboards language-aware
+        confirm_keyboards = {
+            LanguageEngine.ENGLISH:          [["1 Yes"],  ["2 Hindi Roman"], ["3 \u0939\u093f\u0902\u0926\u0940"]],
+            LanguageEngine.HINDI_ROMAN:      [["1 Haan"], ["2 English"],     ["3 \u0939\u093f\u0902\u0926\u0940"]],
+            LanguageEngine.HINDI_DEVANAGARI: [["1 \u0939\u093e\u0901"], ["2 English"], ["3 Hindi Roman"]],
+        }
+
+        # Step A: User pressed a language button from /start keyboard
         chosen = lang_button_map.get(text.lower()) or lang_button_map.get(text)
         if chosen:
             return {
-                "response":          lang_confirm_prompts[chosen],
-                "language_mode":     chosen,
+                "response": {
+                    "text": confirm_texts[chosen],
+                    "keyboard": {
+                        "keyboard": confirm_keyboards[chosen],
+                        "resize_keyboard": True,
+                        "one_time_keyboard": True,
+                    },
+                },
+                "language_mode": chosen,
                 "language_confirmed": False,
-                "state_blob":        LanguageEngine.dump_state({"awaiting": True, "pending": chosen}),
+                "state_blob": LanguageEngine.dump_state({"awaiting": True, "pending": chosen}),
             }
 
-        # ── Step B: User replied 1/2/3 to confirm or switch language ─────────────
+        # Step B: User replied 1/2/3 to confirm or switch
         if state.get("awaiting") and not confirmed:
             pending = state.get("pending") or mode
 
@@ -108,17 +118,20 @@ class LanguageEngine:
                 },
             }
 
-            if text in ("1", "haan", "yes", "हाँ", "ha"):
+            t_lower = text.lower().strip()
+
+            if t_lower in ("1 haan", "1 yes", "1 \u0939\u093e\u0901", "1 ha", "1", "haan", "yes", "\u0939\u093e\u0901", "ha"):
                 final_lang = pending
-            elif text in ("2", "3") and pending in switch_map:
-                final_lang = switch_map[pending].get(text, pending)
+            elif t_lower in ("2", "2 english", "2 hindi roman"):
+                final_lang = switch_map.get(pending, {}).get("2", pending)
+            elif t_lower in ("3", "3 \u0939\u093f\u0902\u0926\u0940", "3 hindi roman"):
+                final_lang = switch_map.get(pending, {}).get("3", pending)
             else:
-                # Unrecognised reply — don't intercept, let main flow handle it
-                return None
+                return None  # Unrecognised reply, let main flow handle it
 
             script = "devanagari" if final_lang == LanguageEngine.HINDI_DEVANAGARI else "latin"
 
-            confirmed_msgs = {
+            confirmed_texts = {
                 LanguageEngine.ENGLISH: (
                     "Great! Let's continue in English.\n\n"
                     "Please share your birth details:\n"
@@ -130,33 +143,36 @@ class LanguageEngine:
                     "Example: 15-08-1990, 10:30 AM, Delhi"
                 ),
                 LanguageEngine.HINDI_DEVANAGARI: (
-                    "ठीक है! हिंदी में बात करते हैं।\n\n"
-                    "अपनी जन्म जानकारी भेजें:\n"
-                    "उदाहरण: 15-08-1990, 10:30 AM, दिल्ली"
+                    "\u0920\u0940\u0915 \u0939\u0948! \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u092c\u093e\u0924 \u0915\u0930\u0924\u0947 \u0939\u0948\u0902\u0964\n\n"
+                    "\u0905\u092a\u0928\u0940 \u091c\u0928\u094d\u092e \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u092d\u0947\u091c\u0947\u0902:\n"
+                    "\u0909\u0926\u093e\u0939\u0930\u0923: 15-08-1990, 10:30 AM, \u0926\u093f\u0932\u094d\u0932\u0940"
                 ),
             }
 
             return {
-                "response":           confirmed_msgs[final_lang],
-                "language_mode":      final_lang,
-                "language_confirmed": True,          # ← THE KEY FIX
-                "script":             script,
-                "step":               "birthdata",   # ← Advance the flow
-                "state_blob":         LanguageEngine.dump_state({"awaiting": False, "pending": None}),
+                "response": {
+                    "text": confirmed_texts[final_lang],
+                    "keyboard": {"remove_keyboard": True},
+                },
+                "language_mode": final_lang,
+                "language_confirmed": True,
+                "script": script,
+                "step": "birthdata",
+                "state_blob": LanguageEngine.dump_state({"awaiting": False, "pending": None}),
             }
 
         return None
 
-    # ─────────────────────────────────────────────────────────────
+    # -----------------------------------------------------------------
     @staticmethod
     def enforce_response_language(session, text):
         mode     = getattr(session, "language_mode", None)
         detected = LanguageEngine.detect_language(text)
 
         if mode == LanguageEngine.HINDI_ROMAN:
-            return text
+            return text  # trust LLM output for Roman Hindi
         if mode == LanguageEngine.HINDI_DEVANAGARI and detected != LanguageEngine.HINDI_DEVANAGARI:
-            return "चलिए हिंदी में बात जारी रखते हैं.\n\n" + text
+            return "\u091a\u0932\u093f\u090f \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u092c\u093e\u0924 \u091c\u093e\u0930\u0940 \u0930\u0916\u0924\u0947 \u0939\u0948\u0902.\n\n" + text
         if mode == LanguageEngine.ENGLISH and detected != LanguageEngine.ENGLISH:
             return "Let's continue in English.\n\n" + text
         return text
