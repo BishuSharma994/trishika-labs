@@ -18,6 +18,50 @@ from app.utils.birth_data_parser import BirthDataParser
 from app.utils.geo_resolver import resolve_coordinates
 
 
+# -----------------------------------------------------------------------------
+# Keyboard / text helpers  (language-aware)
+# -----------------------------------------------------------------------------
+
+TOPIC_TEXTS = {
+    LanguageEngine.ENGLISH:          "Birth details received!\n\nWhat area would you like to explore?",
+    LanguageEngine.HINDI_ROMAN:      "Janm details mil gayi!\n\nKis topic ke baare mein jaanna chahte hain?",
+    LanguageEngine.HINDI_DEVANAGARI: "\u091c\u0928\u094d\u092e \u0935\u093f\u0935\u0930\u0923 \u092e\u093f\u0932 \u0917\u092f\u093e!\n\n\u0906\u092a \u0915\u093f\u0938 \u0935\u093f\u0937\u092f \u0915\u0947 \u092c\u093e\u0930\u0947 \u092e\u0947\u0902 \u091c\u093e\u0928\u0928\u093e \u091a\u093e\u0939\u0924\u0947 \u0939\u0948\u0902?",
+}
+
+TOPIC_KEYBOARDS = {
+    LanguageEngine.ENGLISH:          [["Career", "Marriage"], ["Finance", "Health"]],
+    LanguageEngine.HINDI_ROMAN:      [["Career", "Shaadi"],   ["Finance", "Health"]],
+    LanguageEngine.HINDI_DEVANAGARI: [[करियर", "\u0935\u093f\u0935\u093e\u0939"], ["\u0935\u093f\u0924\u094d\u0924", "\u0938\u094d\u0935\u093e\u0938\u094d\u0925\u094d\u092f"]],
+}
+
+TOPIC_RETRY_TEXTS = {
+    LanguageEngine.ENGLISH:          "Please choose a topic: Career, Marriage, Finance or Health.",
+    LanguageEngine.HINDI_ROMAN:      "Ek topic choose karein: Career, Shaadi, Finance ya Health.",
+    LanguageEngine.HINDI_DEVANAGARI: "\u0915\u0943\u092a\u092f\u093e \u090f\u0915 \u0935\u093f\u0937\u092f \u091a\u0941\u0928\u0947\u0902: \u0915\u0930\u093f\u092f\u0930, \u0935\u093f\u0935\u093e\u0939, \u0935\u093f\u0924\u094d\u0924 \u092f\u093e \u0938\u094d\u0935\u093e\u0938\u094d\u0925\u094d\u092f\u0964",
+}
+
+BIRTHDATA_ERROR_TEXTS = {
+    LanguageEngine.ENGLISH:          "Please send your date, time and place of birth.\nExample: 15-08-1990, 10:30 AM, Delhi",
+    LanguageEngine.HINDI_ROMAN:      "Please date, time aur jagah bhejiye.\nExample: 15-08-1990, 10:30 AM, Delhi",
+    LanguageEngine.HINDI_DEVANAGARI: "\u0915\u0943\u092a\u092f\u093e \u0924\u093e\u0930\u0940\u0916, \u0938\u092e\u092f \u0914\u0930 \u091c\u0917\u0939 \u092d\u0947\u091c\u0947\u0902\u0964\n\u0909\u0926\u093e\u0939\u0930\u0923: 15-08-1990, 10:30 AM, \u0926\u093f\u0932\u094d\u0932\u0940",
+}
+
+
+def _topic_keyboard_response(lang, text_map=None):
+    """Return a dict with text + topic selection keyboard."""
+    texts = text_map or TOPIC_TEXTS
+    return {
+        "text": texts.get(lang, texts[LanguageEngine.ENGLISH]),
+        "keyboard": {
+            "keyboard": TOPIC_KEYBOARDS.get(lang, TOPIC_KEYBOARDS[LanguageEngine.ENGLISH]),
+            "resize_keyboard": True,
+            "one_time_keyboard": True,
+        },
+    }
+
+
+# -----------------------------------------------------------------------------
+
 class DialogEngine:
 
     # ------------------------------------------------------------------
@@ -42,12 +86,14 @@ class DialogEngine:
     @staticmethod
     def process(user_id, text, session=None):
         MemoryEngine.add_user_message(user_id, text)
-        session  = StateManager.get_or_create_session(user_id)
-        language = session.language or "en"
-        script   = getattr(session, "script", None) or "latin"
+        session = StateManager.get_or_create_session(user_id)
+
+        # Single source of truth for language
+        lang   = getattr(session, "language_mode", LanguageEngine.ENGLISH) or LanguageEngine.ENGLISH
+        script = getattr(session, "script", None) or "latin"
 
         # --------------------------------------------------------------
-        # /start — reset everything
+        # /start  reset everything
         # --------------------------------------------------------------
         if text == "/start":
             StateManager.update_session(
@@ -65,9 +111,9 @@ class DialogEngine:
             )
             MemoryEngine.clear(user_id)
             return {
-                "text": "Please select your language\n\nकृपया अपनी भाषा चुनें",
+                "text": "Please select your language\n\n\u0915\u0943\u092a\u092f\u093e \u0905\u092a\u0928\u0940 \u092d\u093e\u0937\u093e \u091a\u0941\u0928\u0947\u0902",
                 "keyboard": {
-                    "keyboard": [["English"], ["हिंदी"], ["Hindi (Roman)"]],
+                    "keyboard": [["English"], ["\u0939\u093f\u0902\u0926\u0940"], ["Hindi (Roman)"]],
                     "resize_keyboard": True,
                     "one_time_keyboard": True,
                 },
@@ -85,9 +131,9 @@ class DialogEngine:
                 update["language_confirmed"] = language_result["language_confirmed"]
             if language_result.get("state_blob"):
                 update["language_state_blob"] = language_result["state_blob"]
-            if language_result.get("script"):        # ← FIX: was missing
+            if language_result.get("script"):
                 update["script"] = language_result["script"]
-            if language_result.get("step"):          # ← FIX: was missing
+            if language_result.get("step"):
                 update["step"] = language_result["step"]
 
             if update:
@@ -97,7 +143,9 @@ class DialogEngine:
 
             if language_result.get("response"):
                 reply = language_result["response"]
-                MemoryEngine.add_bot_message(user_id, reply)
+                # reply is now a dict {"text":..., "keyboard":...}
+                bot_text = reply.get("text", "") if isinstance(reply, dict) else reply
+                MemoryEngine.add_bot_message(user_id, bot_text)
                 return reply
 
         # --------------------------------------------------------------
@@ -110,13 +158,10 @@ class DialogEngine:
             place  = parsed.get("place")
 
             if not dob or not tob or not place:
-                lang = getattr(session, "language_mode", LanguageEngine.ENGLISH)
-                if lang == LanguageEngine.HINDI_DEVANAGARI:
-                    return "कृपया तारीख, समय और जगह भेजें।\nउदाहरण: 15-08-1990, 10:30 AM, दिल्ली"
-                elif lang == LanguageEngine.HINDI_ROMAN:
-                    return "Please date, time aur jagah bhejiye.\nExample: 15-08-1990, 10:30 AM, Delhi"
-                else:
-                    return "Please send your date, time and place of birth.\nExample: 15-08-1990, 10:30 AM, Delhi"
+                return {
+                    "text": BIRTHDATA_ERROR_TEXTS.get(lang, BIRTHDATA_ERROR_TEXTS[LanguageEngine.ENGLISH]),
+                    "keyboard": {"remove_keyboard": True},
+                }
 
             age        = calculate_age(dob)
             life_stage = detect_life_stage(age)
@@ -133,29 +178,24 @@ class DialogEngine:
                 consultation_state_blob=None,
             )
 
-            lang = getattr(session, "language_mode", LanguageEngine.ENGLISH)
-            if lang == LanguageEngine.HINDI_DEVANAGARI:
-                return "जन्म विवरण मिल गया। आप किस विषय के बारे में जानना चाहते हैं?\nकरियर, विवाह, वित्त, स्वास्थ्य"
-            elif lang == LanguageEngine.HINDI_ROMAN:
-                return "Janm details mil gayi. Aap kis topic ke baare mein jaanna chahte hain?\nCareer, Shaadi, Finance, Health"
-            else:
-                return "Birth details received! What area would you like to explore?\nCareer, Marriage, Finance, Health"
+            # Refresh lang after DB update
+            lang = getattr(session, "language_mode", LanguageEngine.ENGLISH) or LanguageEngine.ENGLISH
+            response = _topic_keyboard_response(lang)
+            MemoryEngine.add_bot_message(user_id, response["text"])
+            return response
 
         # --------------------------------------------------------------
         # MAIN CONSULTATION
         # --------------------------------------------------------------
         if session.step == "question":
             last_domain = getattr(session, "last_domain", None)
+            domain      = DomainRouter.detect(text, current_domain=last_domain)
 
-            domain = DomainRouter.detect(text, current_domain=last_domain)
             if not domain and not last_domain:
-                lang = getattr(session, "language_mode", LanguageEngine.ENGLISH)
-                if lang == LanguageEngine.HINDI_DEVANAGARI:
-                    return "कृपया एक विषय चुनें: करियर, विवाह, वित्त या स्वास्थ्य।"
-                elif lang == LanguageEngine.HINDI_ROMAN:
-                    return "Please ek topic choose karein: Career, Shaadi, Finance ya Health."
-                else:
-                    return "Please choose a topic: Career, Marriage, Finance or Health."
+                response = _topic_keyboard_response(lang, text_map=TOPIC_RETRY_TEXTS)
+                MemoryEngine.add_bot_message(user_id, response["text"])
+                return response
+
             if not domain:
                 domain = last_domain
 
@@ -175,7 +215,7 @@ class DialogEngine:
             consultation = ConsultationEngine.generate_response(
                 domain=domain,
                 domain_data=domain_data,
-                language=language,
+                language=lang,           # FIXED: was session.language (always None)
                 script=script,
                 stage=current_stage,
                 age=getattr(session, "age", None),
@@ -191,9 +231,10 @@ class DialogEngine:
                 domain_switched=False,
             )
 
-            reply      = consultation.get("text", "")
-            reply      = PlanetTranslator.translate(reply, language, script)
-            reply      = LanguageEngine.enforce_response_language(session, reply)
+            reply = consultation.get("text", "")
+            reply = PlanetTranslator.translate(reply, lang, script)
+            reply = LanguageEngine.enforce_response_language(session, reply)
+
             next_stage = ConsultationController.next_stage(current_stage)
 
             StateManager.update_session(
@@ -204,9 +245,17 @@ class DialogEngine:
             )
 
             MemoryEngine.add_bot_message(user_id, reply)
-            return reply
+
+            # Free-text consultation  remove keyboard
+            return {
+                "text": reply,
+                "keyboard": {"remove_keyboard": True},
+            }
 
         # --------------------------------------------------------------
         # FALLBACK
         # --------------------------------------------------------------
-        return "Type /start to begin."
+        return {
+            "text": "Type /start to begin.",
+            "keyboard": {"remove_keyboard": True},
+        }
