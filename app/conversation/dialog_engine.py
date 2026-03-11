@@ -19,7 +19,7 @@ from app.utils.geo_resolver import resolve_coordinates
 
 
 # -----------------------------------------------------------------------------
-# Keyboard / text helpers  (language-aware)
+# Keyboard / text helpers (language-aware)
 # -----------------------------------------------------------------------------
 
 TOPIC_TEXTS = {
@@ -31,7 +31,7 @@ TOPIC_TEXTS = {
 TOPIC_KEYBOARDS = {
     LanguageEngine.ENGLISH:          [["Career", "Marriage"], ["Finance", "Health"]],
     LanguageEngine.HINDI_ROMAN:      [["Career", "Shaadi"],   ["Finance", "Health"]],
-    LanguageEngine.HINDI_DEVANAGARI: [[करियर", "\u0935\u093f\u0935\u093e\u0939"], ["\u0935\u093f\u0924\u094d\u0924", "\u0938\u094d\u0935\u093e\u0938\u094d\u0925\u094d\u092f"]],
+    LanguageEngine.HINDI_DEVANAGARI: [["\u0915\u0930\u093f\u092f\u0930", "\u0935\u093f\u0935\u093e\u0939"], ["\u0935\u093f\u0924\u094d\u0924", "\u0938\u094d\u0935\u093e\u0938\u094d\u0925\u094d\u092f"]],
 }
 
 TOPIC_RETRY_TEXTS = {
@@ -93,7 +93,7 @@ class DialogEngine:
         script = getattr(session, "script", None) or "latin"
 
         # --------------------------------------------------------------
-        # /start  reset everything
+        # /start - reset everything
         # --------------------------------------------------------------
         if text == "/start":
             StateManager.update_session(
@@ -143,7 +143,6 @@ class DialogEngine:
 
             if language_result.get("response"):
                 reply = language_result["response"]
-                # reply is now a dict {"text":..., "keyboard":...}
                 bot_text = reply.get("text", "") if isinstance(reply, dict) else reply
                 MemoryEngine.add_bot_message(user_id, bot_text)
                 return reply
@@ -178,7 +177,6 @@ class DialogEngine:
                 consultation_state_blob=None,
             )
 
-            # Refresh lang after DB update
             lang = getattr(session, "language_mode", LanguageEngine.ENGLISH) or LanguageEngine.ENGLISH
             response = _topic_keyboard_response(lang)
             MemoryEngine.add_bot_message(user_id, response["text"])
@@ -215,7 +213,7 @@ class DialogEngine:
             consultation = ConsultationEngine.generate_response(
                 domain=domain,
                 domain_data=domain_data,
-                language=lang,           # FIXED: was session.language (always None)
+                language=lang,
                 script=script,
                 stage=current_stage,
                 age=getattr(session, "age", None),
@@ -246,7 +244,6 @@ class DialogEngine:
 
             MemoryEngine.add_bot_message(user_id, reply)
 
-            # Free-text consultation  remove keyboard
             return {
                 "text": reply,
                 "keyboard": {"remove_keyboard": True},
