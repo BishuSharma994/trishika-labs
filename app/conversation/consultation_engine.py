@@ -27,11 +27,13 @@ class ConsultationEngine:
         },
         "timing": {
             "kab", "kabhi", "when", "timing", "time", "date", "samay", "kaisa timing",
-            "timeline", "window", "समय", "कब", "टाइमिंग",
+            "timeline", "window", "future", "ahead", "bhavishya", "agle", "आगे",
+            "समय", "कब", "टाइमिंग", "भविष्य",
         },
         "detail": {
             "aur", "more", "detail", "details", "deep", "deeper", "zyada",
-            "explain", "elaborate", "और", "विस्तार",
+            "explain", "elaborate", "tell", "continue", "aage", "next", "batao", "bataye", "bataiye",
+            "और", "विस्तार", "बताओ", "बताइए",
         },
         "affirm": {
             "yes", "haan", "han", "ha", "ji", "ok", "okay", "theek", "thik", "bilkul",
@@ -258,38 +260,28 @@ class ConsultationEngine:
     @staticmethod
     def _action_plan_text(domain, domain_data, language, script, user_text):
         risk_factor = domain_data.get("risk_factor") or "jaldbaazi"
-        focus_line = str(user_text or "").strip()
-        if len(focus_line) > 120:
-            focus_line = focus_line[:120].rstrip() + "..."
-        if not focus_line:
-            focus_line = ConsultationEngine._localized(
-                language,
-                script,
-                "current concern",
-                "vartaman chinta",
-                "वर्तमान चिंता",
-            )
+        domain_label = ConsultationEngine._domain_label(domain, language, script)
 
         return ConsultationEngine._localized(
             language,
             script,
             (
                 "Let's move practically.\n"
-                f"1) For the next 7 days, stay consistent on one priority linked to '{focus_line}'.\n"
+                f"1) For the next 7 days, stay consistent on one high-impact priority in {domain_label}.\n"
                 f"2) Avoid decisions during high {risk_factor} moments; pause and reassess after a few hours.\n"
                 "3) On day 8, review what improved and what repeated.\n\n"
                 "If you want, I can now go deeper into timing or remedies for this exact concern."
             ),
             (
                 "Chaliye ise vyavaharik roop se aage badhate hain.\n"
-                f"1) Agle 7 din '{focus_line}' se judi ek mukhya disha par lagataar dhyan rakhiye.\n"
+                f"1) Agle 7 din {domain_label} mein ek uchch-prabhavi disha par lagataar dhyan rakhiye.\n"
                 f"2) {risk_factor} ke dauran turant nirnay na lijiye; kuch ghante rukkar punah sochiye.\n"
                 "3) Athve din dekhiyega kya sudhara aur kya baar-baar doharaya gaya.\n\n"
                 "Agar aap chahein to ab main isi mudde par sidhe upay ya spasht samay margdarshan de sakta hoon."
             ),
             (
                 "इसे व्यावहारिक तरीके से आगे बढ़ाते हैं।\n"
-                f"1) अगले 7 दिन '{focus_line}' से जुड़ी एक मुख्य दिशा पर लगातार ध्यान दें।\n"
+                f"1) अगले 7 दिन {domain_label} में एक उच्च-प्रभावी दिशा पर लगातार ध्यान दें।\n"
                 f"2) {risk_factor} के दौरान तुरंत निर्णय न लें; कुछ घंटे रुककर पुनः विचार करें।\n"
                 "3) 8वें दिन देखें क्या बेहतर हुआ और क्या दोहराया गया।\n\n"
                 "यदि चाहें तो अब मैं इसी विषय पर सीधे उपाय या स्पष्ट समय मार्गदर्शन दे सकता हूँ।"
@@ -358,6 +350,7 @@ class ConsultationEngine:
             return True
         question_words = {
             "kya", "kaise", "kab", "kyon", "kyu", "how", "what", "when", "why", "can", "please",
+            "tell", "explain", "future", "aage", "बताओ", "बताइए",
             "बताइए", "कैसे", "कब", "क्या", "क्यों",
         }
         tokens = set(normalized.split())
