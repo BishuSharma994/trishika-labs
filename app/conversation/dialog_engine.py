@@ -1,8 +1,5 @@
 import json
-from datetime import datetime
 
-from app.conversation.domain_router import DomainRouter
-from app.conversation.consultation_controller import ConsultationController
 from app.astro_engine import ParashariEngine
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.astrologer_persona import AstrologerPersona
@@ -12,7 +9,6 @@ from app.conversation.memory_engine import MemoryEngine
 from app.conversation.planet_translator import PlanetTranslator
 from app.conversation.profile_manager import ProfileManager
 from app.conversation.state_manager import StateManager
-from app.conversation.timing_router import TimingRouter
 from app.conversation.life_stage_detector import detect as detect_life_stage
 from app.utils.age_calculator import calculate_age
 from app.utils.birth_data_parser import BirthDataParser
@@ -134,8 +130,11 @@ class DialogEngine:
                 language_confirmed=False,
                 language_state_blob=None,
                 last_domain=None,
-                conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
-                consultation_state_blob=None,
+                conversation_phase=ConsultationEngine.START,
+                consultation_state_blob=ConsultationEngine.bootstrap_state(
+                    language=LanguageEngine.ENGLISH,
+                    flow_state=ConsultationEngine.START,
+                ),
                 chart_data=None,
                 persona_introduced=False,
                 pending_profile_name=None,
@@ -156,9 +155,18 @@ class DialogEngine:
         # --------------------------------------------------------------
         language_result = LanguageEngine.handle_language(session, text)
         if language_result:
+            old_mode = getattr(session, "language_mode", None)
             update = {}
             if language_result.get("language_mode"):
-                update["language_mode"] = language_result["language_mode"]
+                new_mode = language_result["language_mode"]
+                update["language_mode"] = new_mode
+                update["language"] = new_mode
+                update["consultation_state_blob"] = ConsultationEngine.reset_language(
+                    getattr(session, "consultation_state_blob", None),
+                    new_mode,
+                )
+                consultation_state = ConsultationEngine.load_state(update["consultation_state_blob"])
+                update["conversation_phase"] = consultation_state.get("state")
             if "language_confirmed" in language_result:
                 update["language_confirmed"] = language_result["language_confirmed"]
             if language_result.get("state_blob"):
@@ -167,6 +175,15 @@ class DialogEngine:
                 update["script"] = language_result["script"]
             if language_result.get("step"):
                 update["step"] = language_result["step"]
+
+            # Explicit language switch while already in conversation should reset repetition context.
+            if old_mode and language_result.get("language_mode") and language_result["language_mode"] != old_mode:
+                update["consultation_state_blob"] = ConsultationEngine.reset_language(
+                    getattr(session, "consultation_state_blob", None),
+                    language_result["language_mode"],
+                )
+                consultation_state = ConsultationEngine.load_state(update["consultation_state_blob"])
+                update["conversation_phase"] = consultation_state.get("state")
 
             if update:
                 StateManager.update_session(user_id, **update)
@@ -205,6 +222,13 @@ class DialogEngine:
                     active_profile_name=profile_name,
                     step="birthdata",
                     chart_data=None,
+                    consultation_state_blob=ConsultationEngine.move_state(
+                        getattr(session, "consultation_state_blob", None),
+                        ConsultationEngine.COLLECT_BIRTHDATA,
+                        language=lang,
+                        reset_depth=True,
+                    ),
+                    conversation_phase=ConsultationEngine.COLLECT_BIRTHDATA,
                 )
                 response = _birthdata_prompt_response(lang)
                 MemoryEngine.add_bot_message(user_id, response["text"])
@@ -215,6 +239,13 @@ class DialogEngine:
                 pending_profile_name=None,
                 step="profile_name",
                 chart_data=None,
+                consultation_state_blob=ConsultationEngine.move_state(
+                    getattr(session, "consultation_state_blob", None),
+                    ConsultationEngine.COLLECT_BIRTHDATA,
+                    language=lang,
+                    reset_depth=True,
+                ),
+                conversation_phase=ConsultationEngine.COLLECT_BIRTHDATA,
             )
             response = {
                 "text": ProfileManager.profile_name_prompt(lang, script),
@@ -260,8 +291,11 @@ class DialogEngine:
                     age=age,
                     life_stage=life_stage,
                     step="question",
-                    conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
-                    consultation_state_blob=None,
+                    conversation_phase=ConsultationEngine.TOPIC_SELECTION,
+                    consultation_state_blob=ConsultationEngine.bootstrap_state(
+                        language=lang,
+                        flow_state=ConsultationEngine.TOPIC_SELECTION,
+                    ),
                     chart_data=None,
                 )
                 loaded_line = PROFILE_LOADED_TEXTS.get(lang, PROFILE_LOADED_TEXTS[LanguageEngine.ENGLISH]).format(
@@ -278,6 +312,13 @@ class DialogEngine:
                 active_profile_name=profile_name,
                 step="birthdata",
                 chart_data=None,
+                consultation_state_blob=ConsultationEngine.move_state(
+                    getattr(session, "consultation_state_blob", None),
+                    ConsultationEngine.COLLECT_BIRTHDATA,
+                    language=lang,
+                    reset_depth=True,
+                ),
+                conversation_phase=ConsultationEngine.COLLECT_BIRTHDATA,
             )
             response = _birthdata_prompt_response(lang)
             MemoryEngine.add_bot_message(user_id, response["text"])
@@ -293,10 +334,12 @@ class DialogEngine:
             place  = parsed.get("place")
 
             if not dob or not tob or not place:
-                return {
+                response = {
                     "text": BIRTHDATA_ERROR_TEXTS.get(lang, BIRTHDATA_ERROR_TEXTS[LanguageEngine.ENGLISH]),
                     "keyboard": {"remove_keyboard": True},
                 }
+                MemoryEngine.add_bot_message(user_id, response["text"])
+                return response
 
             age        = calculate_age(dob)
             life_stage = detect_life_stage(age)
@@ -351,8 +394,11 @@ class DialogEngine:
                 life_stage=life_stage,
                 step="question",
                 language_confirmed=True,
-                consultation_state_blob=None,
-                conversation_phase=ConsultationEngine.DOMAIN_ENTRY,
+                consultation_state_blob=ConsultationEngine.bootstrap_state(
+                    language=lang,
+                    flow_state=ConsultationEngine.TOPIC_SELECTION,
+                ),
+                conversation_phase=ConsultationEngine.TOPIC_SELECTION,
                 profiles=ProfileManager.serialize_profiles(updated_profiles if stored else existing_profiles),
                 active_profile_name=profile_name,
                 pending_profile_name=None,
@@ -368,27 +414,25 @@ class DialogEngine:
         # MAIN CONSULTATION
         # --------------------------------------------------------------
         if session.step == "question":
-            last_domain = getattr(session, "last_domain", None)
-            domain      = DomainRouter.detect(text, current_domain=last_domain)
-
-            if not domain and not last_domain:
-                response = _topic_keyboard_response(lang, text_map=TOPIC_RETRY_TEXTS)
-                MemoryEngine.add_bot_message(user_id, response["text"])
-                return response
-
-            if not domain:
-                domain = last_domain
-
-            domain_switched = bool(last_domain and domain and domain != last_domain)
-            current_stage = ConsultationEngine.DOMAIN_ENTRY if domain_switched else (
-                getattr(session, "conversation_phase", None)
-                or ConsultationEngine.DOMAIN_ENTRY
+            consultation_state = ConsultationEngine.load_state(
+                getattr(session, "consultation_state_blob", None)
+            )
+            active_topic = consultation_state.get("topic") or getattr(session, "last_domain", None)
+            domain = IntentRouter.detect_domain(text, current_domain=active_topic)
+            domain_switched = bool(active_topic and domain and domain != active_topic)
+            current_stage = (
+                consultation_state.get("state")
+                or getattr(session, "conversation_phase", None)
+                or ConsultationEngine.TOPIC_SELECTION
             )
 
             chart        = DialogEngine.load_chart(user_id, session)
-            score_domain = ConsultationEngine.score_domain(domain) or domain
-            domain_data  = dict(chart.get("domain_scores", {}).get(score_domain, {}))
-            domain_data["timing_focus"] = bool(TimingRouter.is_timing_question(text))
+            score_domain = ConsultationEngine.score_domain(domain or active_topic)
+            if score_domain:
+                domain_data = dict(chart.get("domain_scores", {}).get(score_domain, {}))
+            else:
+                domain_data = {}
+            normalized_intent = IntentRouter.normalize_intent(text)
 
             current_dasha = chart.get("current_dasha", {})
             transits      = chart.get("transit", {})
@@ -410,6 +454,7 @@ class DialogEngine:
                 user_text=text,
                 session_state_blob=getattr(session, "consultation_state_blob", None),
                 domain_switched=domain_switched,
+                normalized_intent=normalized_intent,
             )
 
             reply = consultation.get("text", "")
@@ -417,31 +462,37 @@ class DialogEngine:
             reply = LanguageEngine.enforce_response_language(session, reply)
 
             persona_introduced = bool(getattr(session, "persona_introduced", False))
-            persona_language = (
-                "hi" if lang in {LanguageEngine.HINDI_ROMAN, LanguageEngine.HINDI_DEVANAGARI} else "en"
-            )
-            persona_script = (
-                "devanagari"
-                if lang == LanguageEngine.HINDI_DEVANAGARI
-                else "roman" if lang == LanguageEngine.HINDI_ROMAN else "latin"
-            )
-            reply, persona_marked = AstrologerPersona.apply_once(
-                reply=reply,
-                language=persona_language,
-                script=persona_script,
-                persona_introduced=persona_introduced,
-            )
+            next_stage = consultation.get("next_stage") or ConsultationEngine.TOPIC_SELECTION
+            persona_marked = False
+            if next_stage in {
+                ConsultationEngine.ANALYSIS,
+                ConsultationEngine.TIMING,
+                ConsultationEngine.GUIDANCE,
+                ConsultationEngine.REMEDY,
+            }:
+                persona_language = (
+                    "hi" if lang in {LanguageEngine.HINDI_ROMAN, LanguageEngine.HINDI_DEVANAGARI} else "en"
+                )
+                persona_script = (
+                    "devanagari"
+                    if lang == LanguageEngine.HINDI_DEVANAGARI
+                    else "roman" if lang == LanguageEngine.HINDI_ROMAN else "latin"
+                )
+                reply, persona_marked = AstrologerPersona.apply_once(
+                    reply=reply,
+                    language=persona_language,
+                    script=persona_script,
+                    persona_introduced=persona_introduced,
+                )
 
-            next_stage = (
-                consultation.get("next_stage")
-                or ConsultationController.next_stage(current_stage)
-            )
+            updated_state_blob = consultation.get("state_blob")
+            updated_state = ConsultationEngine.load_state(updated_state_blob)
 
             StateManager.update_session(
                 user_id,
-                last_domain=domain,
+                last_domain=(domain or updated_state.get("topic") or active_topic),
                 conversation_phase=next_stage,
-                consultation_state_blob=consultation.get("state_blob"),
+                consultation_state_blob=updated_state_blob,
                 persona_introduced=(persona_introduced or persona_marked),
             )
 

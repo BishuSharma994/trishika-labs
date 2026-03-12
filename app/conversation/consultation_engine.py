@@ -1,319 +1,230 @@
+import hashlib
 import json
-import logging
 import re
 from difflib import SequenceMatcher
-from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.conversation.astrology_response_template import AstrologyResponseTemplate
+from app.conversation.intent_router import IntentRouter
 
 
 class ConsultationEngine:
 
-    DOMAIN_ENTRY = "DOMAIN_ENTRY"
-    STATUS_CAPTURE = "STATUS_CAPTURE"
-    DIAGNOSTIC = "DIAGNOSTIC"
-    INTERPRETATION = "INTERPRETATION"
+    START = "START"
+    COLLECT_BIRTHDATA = "COLLECT_BIRTHDATA"
+    TOPIC_SELECTION = "TOPIC_SELECTION"
+    SUBTOPIC_SELECTION = "SUBTOPIC_SELECTION"
+    ANALYSIS = "ANALYSIS"
+    TIMING = "TIMING"
     GUIDANCE = "GUIDANCE"
-    ACTION_PLAN = "ACTION_PLAN"
+    REMEDY = "REMEDY"
 
-    INTENT_HIGH_CONFIDENCE = 0.84
-    INTENT_LOW_CONFIDENCE = 0.62
+    # Legacy aliases kept for compatibility with existing callers.
+    DOMAIN_ENTRY = TOPIC_SELECTION
+    STATUS_CAPTURE = SUBTOPIC_SELECTION
+    DIAGNOSTIC = ANALYSIS
+    INTERPRETATION = ANALYSIS
+    ACTION_PLAN = REMEDY
 
-    INTENT_KEYWORDS = {
-        "remedy": {
-            "upay", "upaye", "upaay", "upaaye", "upai", "upaiye", "upaie", "upchar", "totka",
-            "remedy", "remedies", "remady", "remeady", "remidey", "solution",
-            "उपाय", "उपायों", "उपचार",
-        },
-        "timing": {
-            "kab", "kabhi", "when", "timing", "time", "date", "samay", "kaisa timing",
-            "timeline", "window", "future", "ahead", "bhavishya", "agle", "आगे",
-            "समय", "कब", "टाइमिंग", "भविष्य",
-        },
-        "detail": {
-            "aur", "more", "detail", "details", "deep", "deeper", "zyada",
-            "explain", "elaborate", "tell", "continue", "aage", "next", "batao", "bataye", "bataiye",
-            "और", "विस्तार", "बताओ", "बताइए",
-        },
-        "affirm": {
-            "yes", "haan", "han", "ha", "ji", "ok", "okay", "theek", "thik", "bilkul",
-            "yes please", "please give", "de dijiye", "de do", "bataiye", "bataye",
-            "haan ji", "जी", "हाँ",
-        },
+    DEPTH_MIN = 1
+    DEPTH_MAX = 5
+
+    VALID_STATES = {
+        START,
+        COLLECT_BIRTHDATA,
+        TOPIC_SELECTION,
+        SUBTOPIC_SELECTION,
+        ANALYSIS,
+        TIMING,
+        GUIDANCE,
+        REMEDY,
     }
 
-    # --------------------------------------------------
-
-    DOMAIN_ALIASES = {
-        "career": ["career","job","naukri","profession","work"],
-        "marriage": ["marriage","shaadi","vivah","wife","husband"],
-        "finance": ["finance","money","paisa","income","wealth"],
-        "health": ["health","fitness","disease","sehat"]
-    }
-
-    STATUS_MAP = {
+    SUBTOPIC_KEYWORDS = {
+        "career": {
+            "job_switch": {
+                "job switch", "switch job", "change job", "new job", "naukri badalna",
+                "switch", "job", "interview",
+            },
+            "promotion": {
+                "promotion", "growth", "raise", "increment", "salary growth",
+                "padonnati", "raise in salary",
+            },
+            "business_direction": {
+                "business direction", "business", "startup", "entrepreneur", "vyapar",
+                "biz direction", "company direction",
+            },
+        },
+        "finance": {
+            "savings": {
+                "savings", "saving", "save", "bachat", "fund", "cash reserve",
+            },
+            "investment": {
+                "investment", "invest", "sip", "stocks", "mutual fund", "nivesh",
+            },
+            "debt_management": {
+                "debt", "loan", "emi", "karz", "karja", "debt management",
+                "karz prabandhan", "repayment",
+            },
+        },
         "marriage": {
-            "single": ["1","single","not married","avivahit","अविवाहित"],
-            "relationship": ["2","relationship","dating","sambandh","संबंध"],
-            "married": ["3","married","already married","spouse","vivahit","विवाहित"]
-        }
+            "single_path": {
+                "single", "new relationship", "naya rishta", "new partner",
+            },
+            "relationship_stability": {
+                "relationship", "stability", "existing relationship", "rishta",
+                "jhagda", "jagda", "conflict", "clarity",
+            },
+            "married_life": {
+                "married", "marriage", "spouse", "husband", "wife", "vivahit",
+                "shaadi",
+            },
+        },
+        "health": {
+            "stress": {
+                "stress", "anxiety", "tanav", "mental", "worry",
+            },
+            "lifestyle_balance": {
+                "lifestyle", "routine", "sleep", "diet", "jeevanshaili", "santulan",
+            },
+            "specific_condition": {
+                "disease", "illness", "medical", "diagnosis", "hospital", "pain",
+                "specific issue", "vishesh",
+            },
+        },
     }
 
-    # --------------------------------------------------
+    DEFAULT_SUBTOPIC = {
+        "career": "job_switch",
+        "finance": "savings",
+        "marriage": "relationship_stability",
+        "health": "stress",
+    }
+
+    TOPIC_FALLBACK_ORDER = ("career", "marriage", "finance", "health")
 
     @staticmethod
-    def _is_hi_dev(language, script):
-        return (
-            language in {"hindi_devanagari", "hi_dev"}
-            or (language == "hi" and script == "devanagari")
-        )
-
-    @staticmethod
-    def _is_hi_rom(language, script):
-        return (
-            language in {"hindi_roman", "hi_rom"}
-            or (language == "hi" and script in {"roman", "latin"})
-        )
-
-    @staticmethod
-    def _domain_entry_question(domain, language, script):
-        if domain == "marriage":
-            if ConsultationEngine._is_hi_dev(language, script):
-                return (
-                    "विवाह पर सही मार्गदर्शन के लिए पहले आपकी वर्तमान स्थिति समझना जरूरी है।\n\n"
-                    "आपकी स्थिति क्या है?\n"
-                    "1. अविवाहित\n"
-                    "2. संबंध में\n"
-                    "3. विवाहित"
-                )
-            if ConsultationEngine._is_hi_rom(language, script):
-                return (
-                    "Shaadi par sahi margdarshan ke liye pehle aapki vartaman sthiti samajhna zaroori hai.\n\n"
-                    "Aapki sthiti kya hai?\n"
-                    "1. Avivahit\n"
-                    "2. Sambandh mein\n"
-                    "3. Vivahit"
-                )
-            return (
-                "To guide you accurately on marriage, I first need your current relationship status.\n\n"
-                "What is your current situation?\n"
-                "1. Single\n"
-                "2. In a relationship\n"
-                "3. Already married"
-            )
-
-        if ConsultationEngine._is_hi_dev(language, script):
-            questions = {
-                "career": "करियर में आपका मुख्य ध्यान किस पर है: नौकरी बदलना, पदोन्नति, या व्यापार दिशा?",
-                "finance": "वित्त में आपका मुख्य ध्यान किस पर है: बचत, निवेश, या कर्ज प्रबंधन?",
-                "health": "स्वास्थ्य में आपकी मुख्य चिंता क्या है: तनाव, जीवनशैली संतुलन, या कोई विशेष समस्या?",
-            }
-            return questions.get(domain, "कृपया इस विषय से जुड़ी अपनी वर्तमान स्थिति एक पंक्ति में बताएं।")
-
-        if ConsultationEngine._is_hi_rom(language, script):
-            questions = {
-                "career": "Career mein aapka mukhya dhyan kis par hai: naukri badalna, padonnati, ya vyavsay disha?",
-                "finance": "Vitt mein aapka mukhya dhyan kis par hai: bachat, nivesh, ya karz prabandhan?",
-                "health": "Swasthya mein aapki mukhya chinta kya hai: tanav, jeevanshaili santulan, ya koi vishesh samasya?",
-            }
-            return questions.get(domain, "Kripya is vishay se judi apni vartaman sthiti ek pankti mein batayiye.")
-
-        questions = {
-            "career": "In career, what is your current focus: job switch, promotion, or business direction?",
-            "finance": "In finance, what are you prioritizing right now: savings, investments, or debt management?",
-            "health": "In health, is your concern mainly stress, lifestyle balance, or a specific issue?",
+    def _default_state(language="english"):
+        return {
+            "state": ConsultationEngine.START,
+            "topic": None,
+            "subtopic": None,
+            "depth": 1,
+            "last_response_hash": None,
+            "language": language or "english",
+            "last_user_key": None,
+            "last_state": None,
         }
-        return questions.get(domain, "Please share your current situation in one line for this topic.")
 
     @staticmethod
-    def _marriage_retry_prompt(language, script):
-        if ConsultationEngine._is_hi_dev(language, script):
-            return "कृपया एक विकल्प चुनें:\n1 अविवाहित\n2 संबंध में\n3 विवाहित"
-        if ConsultationEngine._is_hi_rom(language, script):
-            return "Kripya ek vikalp chuniye:\n1 Avivahit\n2 Sambandh mein\n3 Vivahit"
-        return "Please choose one option.\n1 Single\n2 Relationship\n3 Married"
+    def hash_response(text):
+        value = str(text or "")
+        return hashlib.md5(value.encode("utf-8")).hexdigest()
 
     @staticmethod
-    def _marriage_diagnostic_prompt(language, script):
-        if ConsultationEngine._is_hi_dev(language, script):
-            return "वर्तमान संबंध की स्थिति स्थिर है, मिश्रित है, या तनावपूर्ण है?"
-        if ConsultationEngine._is_hi_rom(language, script):
-            return "Vartaman sambandh ki sthiti sthir hai, mishrit hai, ya tanavpurn hai?"
-        return "Is your current relationship harmony stable, mixed, or under stress?"
+    def _clamp_depth(depth):
+        try:
+            value = int(depth)
+        except Exception:
+            value = ConsultationEngine.DEPTH_MIN
+        if value < ConsultationEngine.DEPTH_MIN:
+            return ConsultationEngine.DEPTH_MIN
+        if value > ConsultationEngine.DEPTH_MAX:
+            return ConsultationEngine.DEPTH_MAX
+        return value
 
     @staticmethod
-    def _localized(language, script, en, hi_rom, hi_dev):
-        if ConsultationEngine._is_hi_dev(language, script):
-            return hi_dev
-        if ConsultationEngine._is_hi_rom(language, script):
-            return hi_rom
-        return en
+    def load_state(blob):
+        base = ConsultationEngine._default_state()
+        if not blob:
+            return dict(base)
+
+        try:
+            parsed = json.loads(blob)
+        except Exception:
+            return dict(base)
+
+        if not isinstance(parsed, dict):
+            return dict(base)
+
+        # Migration path for legacy blob shapes.
+        state = dict(base)
+        state["state"] = parsed.get("state") if parsed.get("state") in ConsultationEngine.VALID_STATES else base["state"]
+        state["topic"] = parsed.get("topic")
+        state["subtopic"] = parsed.get("subtopic")
+        state["depth"] = ConsultationEngine._clamp_depth(parsed.get("depth"))
+        state["last_response_hash"] = parsed.get("last_response_hash")
+        state["language"] = parsed.get("language") or base["language"]
+        state["last_user_key"] = parsed.get("last_user_key")
+        state["last_state"] = parsed.get("last_state")
+        return state
 
     @staticmethod
-    def _status_noted_text(status, language, script):
-        status_label = ConsultationEngine._status_label(status, language, script)
-        return ConsultationEngine._localized(
-            language,
-            script,
-            f"Noted. Current status: {status_label}.",
-            f"Theek hai. Aapki vartaman sthiti: {status_label}.",
-            f"ठीक है। आपकी वर्तमान स्थिति: {status_label}।",
-        )
+    def dump_state(state):
+        return json.dumps(state, ensure_ascii=False)
 
     @staticmethod
-    def _domain_label(domain, language, script):
-        labels = {
-            "career": ("career", "career", "करियर"),
-            "finance": ("finance", "vitt", "वित्त"),
-            "marriage": ("relationship", "shaadi", "विवाह"),
-            "health": ("health", "swasthya", "स्वास्थ्य"),
-        }
-        en, hi_rom, hi_dev = labels.get(domain, ("this area", "is area", "इस विषय"))
-        return ConsultationEngine._localized(language, script, en, hi_rom, hi_dev)
+    def bootstrap_state(language, flow_state):
+        state = ConsultationEngine._default_state(language=language)
+        if flow_state in ConsultationEngine.VALID_STATES:
+            state["state"] = flow_state
+        return ConsultationEngine.dump_state(state)
 
     @staticmethod
-    def _status_label(status, language, script):
-        status_key = str(status or "").strip().lower()
-        labels = {
-            "single": ("single", "avivahit", "अविवाहित"),
-            "relationship": ("in a relationship", "sambandh mein", "संबंध में"),
-            "married": ("married", "vivahit", "विवाहित"),
-        }
-        en, hi_rom, hi_dev = labels.get(status_key, (status_key, status_key, status_key))
-        return ConsultationEngine._localized(language, script, en, hi_rom, hi_dev)
+    def move_state(blob, flow_state, language=None, topic=None, subtopic=None, reset_depth=False):
+        state = ConsultationEngine.load_state(blob)
+        if flow_state in ConsultationEngine.VALID_STATES:
+            state["state"] = flow_state
+        if language:
+            state["language"] = language
+        if topic is not None:
+            state["topic"] = topic
+        if subtopic is not None:
+            state["subtopic"] = subtopic
+        if reset_depth:
+            state["depth"] = 1
+            state["last_response_hash"] = None
+        return ConsultationEngine.dump_state(state)
 
     @staticmethod
-    def _diagnostic_stage_text(domain, domain_data, language, script):
-        primary_driver = domain_data.get("primary_driver") or "graha dasha ka prabhav"
-        risk_factor = domain_data.get("risk_factor") or "jaldbaazi"
-        domain_label = ConsultationEngine._domain_label(domain, language, script)
-        return ConsultationEngine._localized(
-            language,
-            script,
-            (
-                f"From your chart and what you shared, this {domain_label} situation is workable. "
-                f"The key driver is {primary_driver}, so progress is possible if you stay patient and consistent."
-            ),
-            (
-                f"Aapki kundli ke sanket aur aapki baat ke aadhar par {domain_label} ki sthiti sambhalne yogya hai. "
-                f"Ismein {primary_driver} ka pramukh prabhav hai, isliye {risk_factor} se bachkar dhairya se aage badhiye."
-            ),
-            (
-                f"आपने जो साझा किया और कुंडली संकेत देखकर लगता है कि {domain_label} की स्थिति संभाली जा सकती है। "
-                f"इसमें {primary_driver} का प्रभाव प्रमुख है, इसलिए {risk_factor} से बचते हुए धैर्य रखना जरूरी होगा।"
-            ),
-        )
-
-    @staticmethod
-    def _interpretation_stage_text(domain, domain_data, language, script):
-        momentum = (domain_data.get("momentum") or "neutral").lower()
-        if momentum == "positive":
-            en_momentum = "momentum is supportive right now"
-            hi_rom_momentum = "momentum abhi supportive hai"
-            hi_dev_momentum = "गति इस समय सहायक है"
-        elif momentum == "challenging":
-            en_momentum = "the phase is sensitive right now"
-            hi_rom_momentum = "yeh phase abhi sensitive hai"
-            hi_dev_momentum = "यह चरण अभी संवेदनशील है"
-        else:
-            en_momentum = "momentum is mixed at the moment"
-            hi_rom_momentum = "momentum abhi mixed hai"
-            hi_dev_momentum = "गति इस समय मिश्रित है"
-
-        return ConsultationEngine._localized(
-            language,
-            script,
-            (
-                f"Planetary combinations show that {en_momentum}. "
-                "Take decisions in steps instead of one big jump, and verify timing before major commitments."
-            ),
-            (
-                f"Grah sanyojan batate hain ki {hi_rom_momentum}. "
-                "Nirnay ek saath lene ke bajay kadam-dar-kadam lijiye, aur bade faislon se pehle samay ka mulyankan kijiye."
-            ),
-            (
-                f"ग्रह संयोजन दिखाते हैं कि {hi_dev_momentum}। "
-                "निर्णय एक बार में लेने के बजाय चरणों में लें और बड़े निर्णयों से पहले समय का मूल्यांकन करें।"
-            ),
-        )
-
-    @staticmethod
-    def _guidance_stage_text(domain, language, script):
-        domain_label = ConsultationEngine._domain_label(domain, language, script)
-        return ConsultationEngine._localized(
-            language,
-            script,
-            (
-                f"For better {domain_label} outcomes, keep communication clear, "
-                "avoid impulsive reactions, and review progress weekly."
-            ),
-            (
-                f"Behtar {domain_label} parinam ke liye samvaad spasht rakhiye, "
-                "aavesh mein pratikriya dene se bachiye, aur har saptah pragati ka punaravalokan kijiye."
-            ),
-            (
-                f"बेहतर {domain_label} परिणामों के लिए संवाद स्पष्ट रखें, "
-                "आवेगपूर्ण प्रतिक्रिया से बचें और साप्ताहिक प्रगति की समीक्षा करें।"
-            ),
-        )
-
-    @staticmethod
-    def _action_plan_text(domain, domain_data, language, script, user_text):
-        risk_factor = domain_data.get("risk_factor") or "jaldbaazi"
-        domain_label = ConsultationEngine._domain_label(domain, language, script)
-
-        return ConsultationEngine._localized(
-            language,
-            script,
-            (
-                "Let's move practically.\n"
-                f"1) For the next 7 days, stay consistent on one high-impact priority in {domain_label}.\n"
-                f"2) Avoid decisions during high {risk_factor} moments; pause and reassess after a few hours.\n"
-                "3) On day 8, review what improved and what repeated.\n\n"
-                "If you want, I can now go deeper into timing or remedies for this exact concern."
-            ),
-            (
-                "Chaliye ise vyavaharik roop se aage badhate hain.\n"
-                f"1) Agle 7 din {domain_label} mein ek uchch-prabhavi disha par lagataar dhyan rakhiye.\n"
-                f"2) {risk_factor} ke dauran turant nirnay na lijiye; kuch ghante rukkar punah sochiye.\n"
-                "3) Athve din dekhiyega kya sudhara aur kya baar-baar doharaya gaya.\n\n"
-                "Agar aap chahein to ab main isi mudde par sidhe upay ya spasht samay margdarshan de sakta hoon."
-            ),
-            (
-                "इसे व्यावहारिक तरीके से आगे बढ़ाते हैं।\n"
-                f"1) अगले 7 दिन {domain_label} में एक उच्च-प्रभावी दिशा पर लगातार ध्यान दें।\n"
-                f"2) {risk_factor} के दौरान तुरंत निर्णय न लें; कुछ घंटे रुककर पुनः विचार करें।\n"
-                "3) 8वें दिन देखें क्या बेहतर हुआ और क्या दोहराया गया।\n\n"
-                "यदि चाहें तो अब मैं इसी विषय पर सीधे उपाय या स्पष्ट समय मार्गदर्शन दे सकता हूँ।"
-            ),
-        )
-
-    @staticmethod
-    def _next_question_text(language, script):
-        return ConsultationEngine._localized(
-            language,
-            script,
-            "Share your next question.",
-            "Apna agla sawal share kijiye.",
-            "अपना अगला सवाल साझा कीजिए।",
-        )
-
-    @staticmethod
-    def _contains_any(text, words):
-        t = ConsultationEngine._normalized_text(text)
-        return any(w in t for w in words)
+    def reset_language(blob, language):
+        state = ConsultationEngine.load_state(blob)
+        previous = state.get("language")
+        if language and language != previous:
+            state["language"] = language
+            state["depth"] = 1
+            state["last_response_hash"] = None
+            state["last_user_key"] = None
+            state["last_state"] = None
+        elif language:
+            state["language"] = language
+        return ConsultationEngine.dump_state(state)
 
     @staticmethod
     def _normalized_text(text):
-        t = str(text or "").lower()
-        t = re.sub(r"[^a-z0-9\u0900-\u097f\s]", " ", t)
-        return re.sub(r"\s+", " ", t).strip()
+        value = str(text or "").strip().lower()
+        value = re.sub(r"[^a-z0-9\u0900-\u097f\s]", " ", value)
+        return re.sub(r"\s+", " ", value).strip()
+
+    @staticmethod
+    def _state_for_depth(depth):
+        depth = ConsultationEngine._clamp_depth(depth)
+        if depth <= 2:
+            return ConsultationEngine.ANALYSIS
+        if depth == 3:
+            return ConsultationEngine.TIMING
+        if depth == 4:
+            return ConsultationEngine.GUIDANCE
+        return ConsultationEngine.REMEDY
+
+    @staticmethod
+    def _render_mode_for_state(state, depth):
+        if state == ConsultationEngine.ANALYSIS and ConsultationEngine._clamp_depth(depth) == 2:
+            return "EXPLANATION"
+        return state
 
     @staticmethod
     def _best_similarity_match(tokens, keywords):
         best_score = 0.0
-        best_token = None
-        best_keyword = None
         for token in tokens:
             if len(token) < 3:
                 continue
@@ -323,236 +234,140 @@ class ConsultationEngine:
                 score = SequenceMatcher(None, token, keyword).ratio()
                 if score > best_score:
                     best_score = score
-                    best_token = token
-                    best_keyword = keyword
-        return best_score, best_token, best_keyword
+        return best_score
 
     @staticmethod
-    def _log_intent_event(domain, stage, text, intent, confidence, note, method=None, matched=None):
-        sample = ConsultationEngine._normalized_text(text)[:160]
-        logger.info(
-            "intent_telemetry domain=%s stage=%s intent=%s confidence=%.2f note=%s method=%s matched=%s text=%s",
-            domain,
-            stage,
-            intent,
-            confidence,
-            note,
-            method or "na",
-            matched or "na",
-            sample,
-        )
+    def _detect_subtopic(topic, text, existing_subtopic=None):
+        if not topic:
+            return None
 
-    @staticmethod
-    def _is_question_like(text):
-        raw = str(text or "")
+        mapping = ConsultationEngine.SUBTOPIC_KEYWORDS.get(topic, {})
         normalized = ConsultationEngine._normalized_text(text)
-        if "?" in raw:
-            return True
-        question_words = {
-            "kya", "kaise", "kab", "kyon", "kyu", "how", "what", "when", "why", "can", "please",
-            "tell", "explain", "future", "aage", "बताओ", "बताइए",
-            "बताइए", "कैसे", "कब", "क्या", "क्यों",
-        }
-        tokens = set(normalized.split())
-        return bool(tokens & question_words)
+        if not normalized:
+            return existing_subtopic
 
-    @staticmethod
-    def _intent_clarifier_text(language, script):
-        return ConsultationEngine._localized(
-            language,
-            script,
-            "To guide you precisely, reply with one choice: remedy, timing, or detail.",
-            "Sahi margdarshan ke liye ek vikalp likhiye: upay, timing, ya detail.",
-            "सटीक मार्गदर्शन के लिए एक विकल्प लिखें: उपाय, समय, या विस्तार।",
-        )
+        for subtopic, keywords in mapping.items():
+            for keyword in keywords:
+                pattern = rf"\b{re.escape(keyword.lower())}\b"
+                if re.search(pattern, normalized):
+                    return subtopic
 
-    @staticmethod
-    def _detect_followup_intent(user_text):
-        t = ConsultationEngine._normalized_text(user_text)
-        base = {
-            "intent": None,
-            "confidence": 0.0,
-            "method": "none",
-            "candidate": None,
-            "matched": None,
-        }
-        if not t:
-            return base
-
-        tokens = t.split()
-
-        # Exact containment has top priority.
-        for intent in ("remedy", "timing", "detail", "affirm"):
-            keywords = ConsultationEngine.INTENT_KEYWORDS[intent]
-            if any((kw in t) for kw in keywords):
-                return {
-                    "intent": intent,
-                    "confidence": 0.99,
-                    "method": "exact",
-                    "candidate": intent,
-                    "matched": intent,
-                }
-
-        # Fuzzy fallback for spelling mistakes.
-        best_intent = None
+        tokens = normalized.split()
+        best_subtopic = None
         best_score = 0.0
-        best_match = None
-        for intent in ("remedy", "timing", "detail", "affirm"):
-            score, token, keyword = ConsultationEngine._best_similarity_match(
-                tokens, ConsultationEngine.INTENT_KEYWORDS[intent]
-            )
+        for subtopic, keywords in mapping.items():
+            score = ConsultationEngine._best_similarity_match(tokens, keywords)
             if score > best_score:
                 best_score = score
-                best_intent = intent
-                best_match = f"{token}->{keyword}" if token and keyword else None
+                best_subtopic = subtopic
 
-        if best_intent and best_score >= ConsultationEngine.INTENT_HIGH_CONFIDENCE:
-            return {
-                "intent": best_intent,
-                "confidence": best_score,
-                "method": "fuzzy_high",
-                "candidate": best_intent,
-                "matched": best_match,
-            }
-        if best_intent and best_score >= ConsultationEngine.INTENT_LOW_CONFIDENCE:
-            return {
-                "intent": None,
-                "confidence": best_score,
-                "method": "fuzzy_low",
-                "candidate": best_intent,
-                "matched": best_match,
-            }
+        if best_subtopic and best_score >= 0.84:
+            return best_subtopic
 
-        return base
+        return existing_subtopic
 
     @staticmethod
-    def _momentum_label(momentum, language, script):
-        momentum_key = (momentum or "neutral").lower()
-        if momentum_key == "positive":
-            return ConsultationEngine._localized(language, script, "supportive", "anukul", "अनुकूल")
-        if momentum_key == "challenging":
-            return ConsultationEngine._localized(language, script, "sensitive", "sankraman-sheel", "संवेदनशील")
-        return ConsultationEngine._localized(language, script, "mixed", "mishrit", "मिश्रित")
+    def _topic_from_input(user_text, current_topic=None):
+        return IntentRouter.detect_domain(user_text, current_domain=current_topic)
 
     @staticmethod
-    def _direct_followup_response(domain, domain_data, language, script, intent):
-        momentum = (domain_data.get("momentum") or "mixed").lower()
-        risk_factor = domain_data.get("risk_factor") or "jaldbaazi"
-        domain_label = ConsultationEngine._domain_label(domain, language, script)
-        momentum_label = ConsultationEngine._momentum_label(momentum, language, script)
+    def _intent_value(normalized_intent, user_text):
+        if isinstance(normalized_intent, dict):
+            return normalized_intent.get("intent")
+        if isinstance(normalized_intent, str):
+            return normalized_intent
+        return IntentRouter.normalize_intent(user_text).get("intent")
 
-        if intent == "remedy":
-            return ConsultationEngine._localized(
-                language,
-                script,
-                (
-                    f"For {domain_label}, start with these remedies: keep a fixed morning discipline, "
-                    f"avoid reactive decisions around {risk_factor}, and take one grounded action daily for 21 days."
-                ),
-                (
-                    f"{domain_label} ke liye pramukh upay yeh hain: subah ka niyamit anushasan rakhiye, "
-                    f"{risk_factor} ke samay turant nirnay na lijiye, aur 21 din tak roz ek sthir kadam lijiye."
-                ),
-                (
-                    f"{domain_label} के लिए पहले ये उपाय अपनाएँ: सुबह की दिनचर्या स्थिर रखें, "
-                    f"{risk_factor} के समय आवेगपूर्ण निर्णय न लें, और 21 दिन तक रोज़ एक स्थिर कदम लें।"
-                ),
-            )
+    @staticmethod
+    def _apply_intent_transition(state, intent, user_text):
+        depth = ConsultationEngine._clamp_depth(state.get("depth"))
+        current_state = state.get("state")
 
         if intent == "timing":
-            return ConsultationEngine._localized(
+            depth = max(depth, 3)
+            return ConsultationEngine.TIMING, depth
+        if intent == "guidance":
+            depth = max(depth, 4)
+            return ConsultationEngine.GUIDANCE, depth
+        if intent == "remedy":
+            depth = 5
+            return ConsultationEngine.REMEDY, depth
+        if intent in {"detail", "explanation", "affirm"}:
+            depth = min(ConsultationEngine.DEPTH_MAX, depth + 1)
+            return ConsultationEngine._state_for_depth(depth), depth
+
+        # Unknown follow-up still escalates one rung to avoid repeating the same block.
+        normalized = ConsultationEngine._normalized_text(user_text)
+        if normalized and current_state in {
+            ConsultationEngine.ANALYSIS,
+            ConsultationEngine.TIMING,
+            ConsultationEngine.GUIDANCE,
+            ConsultationEngine.REMEDY,
+        }:
+            depth = min(ConsultationEngine.DEPTH_MAX, depth + 1)
+            return ConsultationEngine._state_for_depth(depth), depth
+
+        return current_state, depth
+
+    @staticmethod
+    def _render_consultation_response(state, domain_data, language, script):
+        render_mode = ConsultationEngine._render_mode_for_state(state.get("state"), state.get("depth"))
+        return AstrologyResponseTemplate.build_state_response(
+            state=render_mode,
+            topic=state.get("topic"),
+            subtopic=state.get("subtopic"),
+            domain_data=domain_data or {},
+            language=language,
+            script=script,
+        )
+
+    @staticmethod
+    def _render_with_repetition_guard(state, domain_data, language, script):
+        for _ in range(3):
+            text = ConsultationEngine._render_consultation_response(
+                state=state,
+                domain_data=domain_data,
+                language=language,
+                script=script,
+            )
+            digest = ConsultationEngine.hash_response(text)
+            if digest != state.get("last_response_hash"):
+                state["last_response_hash"] = digest
+                return text
+
+            if state.get("depth", 1) < ConsultationEngine.DEPTH_MAX:
+                state["depth"] = ConsultationEngine._clamp_depth(state.get("depth", 1) + 1)
+                state["state"] = ConsultationEngine._state_for_depth(state["depth"])
+                continue
+
+            tail = AstrologyResponseTemplate._localized(
                 language,
                 script,
-                (
-                    f"Timing-wise, momentum for {domain_label} is currently {momentum_label}. "
-                    "Next 6-12 weeks should be used for preparation and calibrated execution."
-                ),
-                (
-                    f"Samay ke hisab se {domain_label} ka pravah abhi {momentum_label} hai. "
-                    "Agle 6-12 hafton mein taiyari aur santulit kriyanvayan sarvottam rahega."
-                ),
-                (
-                    f"समय के अनुसार {domain_label} का प्रवाह अभी {momentum_label} है। "
-                    "अगले 6-12 सप्ताह तैयारी और संतुलित क्रियान्वयन के लिए उपयुक्त रहेंगे।"
-                ),
+                "Ask for another subtopic if you want a fresh angle.",
+                "Naya angle ke liye doosra subtopic puchiye.",
+                "नया दृष्टिकोण चाहिए तो दूसरा उप-विषय पूछें।",
             )
+            varied_text = f"{text}\n\n{tail}"
+            state["last_response_hash"] = ConsultationEngine.hash_response(varied_text)
+            return varied_text
 
-        if intent == "detail":
-            return ConsultationEngine._localized(
-                language,
-                script,
-                (
-                    f"Going deeper: in {domain_label}, progress will come from consistency, not speed. "
-                    f"Your main leverage is disciplined execution while managing {risk_factor} patterns."
-                ),
-                (
-                    f"Gehraai se dekhein to {domain_label} mein pragati gati se nahi, lagataar prayas se aayegi. "
-                    f"Aapki mukhya shakti anushasit kriya hai; bas {risk_factor} ke dhanche ko niyantrit rakhiye."
-                ),
-                (
-                    f"और गहराई से देखें तो {domain_label} में प्रगति गति से नहीं, निरंतरता से आएगी। "
-                    f"आपकी मुख्य शक्ति अनुशासित क्रिया है; बस {risk_factor} के पैटर्न को नियंत्रित रखें।"
-                ),
-            )
-
-        return None
-
-    # --------------------------------------------------
+        fallback = AstrologyResponseTemplate._localized(
+            language,
+            script,
+            "Please continue with your next question.",
+            "Kripya apna agla sawal batayiye.",
+            "कृपया अपना अगला सवाल बताइए।",
+        )
+        state["last_response_hash"] = ConsultationEngine.hash_response(fallback)
+        return fallback
 
     @staticmethod
     def detect_domain(text, current_domain=None):
-
-        t = str(text or "").lower()
-
-        for domain, aliases in ConsultationEngine.DOMAIN_ALIASES.items():
-            for alias in aliases:
-                if re.search(rf"\b{alias}\b", t):
-                    return domain
-
-        return None
-
-    # --------------------------------------------------
+        return ConsultationEngine._topic_from_input(text, current_topic=current_domain)
 
     @staticmethod
     def score_domain(domain):
-
         return domain
-
-    # --------------------------------------------------
-
-    @staticmethod
-    def load_state(blob):
-
-        if not blob:
-            return {"domain_memory": {}}
-
-        try:
-            return json.loads(blob)
-        except Exception:
-            return {"domain_memory": {}}
-
-    @staticmethod
-    def dump_state(state):
-
-        return json.dumps(state, ensure_ascii=False)
-
-    # --------------------------------------------------
-
-    @staticmethod
-    def parse_status(domain, text):
-
-        mapping = ConsultationEngine.STATUS_MAP.get(domain, {})
-
-        t = str(text or "").lower()
-
-        for status, words in mapping.items():
-            for w in words:
-                if re.search(rf"\b{w}\b", t):
-                    return status
-
-        return None
-
-    # --------------------------------------------------
 
     @staticmethod
     def generate_response(
@@ -572,220 +387,206 @@ class ConsultationEngine:
         user_text="",
         session_state_blob=None,
         domain_switched=False,
+        normalized_intent=None,
     ):
-
         state = ConsultationEngine.load_state(session_state_blob)
+        incoming_language = language or state.get("language") or "english"
+        if state.get("language") != incoming_language:
+            state["language"] = incoming_language
+            state["depth"] = 1
+            state["last_response_hash"] = None
+            state["last_user_key"] = None
+            state["last_state"] = None
+        else:
+            state["language"] = incoming_language
 
-        memory = state["domain_memory"].setdefault(domain, {})
-        intent_info = ConsultationEngine._detect_followup_intent(user_text)
-        detected_intent = intent_info["intent"]
-        intent_candidate = intent_info["candidate"]
+        if state.get("state") == ConsultationEngine.START and stage in ConsultationEngine.VALID_STATES:
+            state["state"] = stage
 
-        if intent_info["method"] == "fuzzy_low":
-            ConsultationEngine._log_intent_event(
-                domain=domain,
-                stage=stage,
-                text=user_text,
-                intent=intent_candidate,
-                confidence=float(intent_info["confidence"]),
-                note="low_confidence_candidate",
-                method=intent_info.get("method"),
-                matched=intent_info.get("matched"),
+        if domain_switched and domain:
+            state["topic"] = domain
+            state["subtopic"] = None
+            state["depth"] = 1
+            state["last_response_hash"] = None
+            state["state"] = ConsultationEngine.SUBTOPIC_SELECTION
+
+        current_state = state.get("state") or ConsultationEngine.START
+        user_key = ConsultationEngine._normalized_text(user_text)
+
+        if current_state == ConsultationEngine.START:
+            state["state"] = ConsultationEngine.TOPIC_SELECTION
+            text = AstrologyResponseTemplate.topic_prompt(language, script)
+            state["last_response_hash"] = ConsultationEngine.hash_response(text)
+            state["last_user_key"] = user_key
+            state["last_state"] = state["state"]
+            return {
+                "text": text,
+                "next_stage": state["state"],
+                "state_blob": ConsultationEngine.dump_state(state),
+            }
+
+        if current_state == ConsultationEngine.COLLECT_BIRTHDATA:
+            text = AstrologyResponseTemplate._localized(
+                language,
+                script,
+                "Please share date, time, and place of birth first.",
+                "Pehle janm ki tareekh, samay, aur jagah bhejiye.",
+                "पहले जन्म की तारीख, समय और जगह भेजें।",
             )
+            state["last_response_hash"] = ConsultationEngine.hash_response(text)
+            state["last_user_key"] = user_key
+            state["last_state"] = current_state
+            return {
+                "text": text,
+                "next_stage": state["state"],
+                "state_blob": ConsultationEngine.dump_state(state),
+            }
 
-        if detected_intent in {"remedy", "timing", "detail"}:
-            memory["last_requested_intent"] = detected_intent
-            memory["pending_intent"] = detected_intent
-        elif detected_intent == "affirm":
-            pending_intent = memory.get("pending_intent")
-            if pending_intent in {"remedy", "timing", "detail"}:
-                detected_intent = pending_intent
+        if current_state == ConsultationEngine.TOPIC_SELECTION:
+            selected_topic = domain or ConsultationEngine._topic_from_input(user_text, current_topic=state.get("topic"))
+            if not selected_topic:
+                text = AstrologyResponseTemplate.topic_prompt(language, script)
+                state["last_response_hash"] = ConsultationEngine.hash_response(text)
+                state["last_user_key"] = user_key
+                state["last_state"] = current_state
+                return {
+                    "text": text,
+                    "next_stage": state["state"],
+                    "state_blob": ConsultationEngine.dump_state(state),
+                }
+
+            state["topic"] = selected_topic
+            state["depth"] = 1
+            state["last_response_hash"] = None
+            state["state"] = ConsultationEngine.SUBTOPIC_SELECTION
+
+            selected_subtopic = ConsultationEngine._detect_subtopic(selected_topic, user_text)
+            if selected_subtopic:
+                state["subtopic"] = selected_subtopic
+                state["state"] = ConsultationEngine.ANALYSIS
+                text = ConsultationEngine._render_with_repetition_guard(state, domain_data, language, script)
             else:
-                detected_intent = None
+                text = AstrologyResponseTemplate.subtopic_prompt(selected_topic, language, script)
+                state["last_response_hash"] = ConsultationEngine.hash_response(text)
 
-        if stage in {
-            ConsultationEngine.DIAGNOSTIC,
-            ConsultationEngine.INTERPRETATION,
-            ConsultationEngine.GUIDANCE,
-            ConsultationEngine.ACTION_PLAN,
-        } and detected_intent in {"remedy", "timing", "detail"}:
-            direct_reply = ConsultationEngine._direct_followup_response(
-                domain=domain,
-                domain_data=domain_data or {},
-                language=language,
-                script=script,
-                intent=detected_intent,
-            )
-            if direct_reply:
-                memory["pending_intent"] = None
+            state["last_user_key"] = user_key
+            state["last_state"] = state["state"]
+            return {
+                "text": text,
+                "next_stage": state["state"],
+                "state_blob": ConsultationEngine.dump_state(state),
+            }
+
+        if current_state == ConsultationEngine.SUBTOPIC_SELECTION:
+            selected_topic = state.get("topic") or domain or ConsultationEngine._topic_from_input(user_text)
+            if not selected_topic:
+                state["state"] = ConsultationEngine.TOPIC_SELECTION
+                text = AstrologyResponseTemplate.topic_prompt(language, script)
+                state["last_response_hash"] = ConsultationEngine.hash_response(text)
+                state["last_user_key"] = user_key
+                state["last_state"] = state["state"]
                 return {
-                    "text": direct_reply,
-                    "next_stage": ConsultationEngine.ACTION_PLAN,
+                    "text": text,
+                    "next_stage": state["state"],
                     "state_blob": ConsultationEngine.dump_state(state),
                 }
 
-        if (
-            stage in {ConsultationEngine.GUIDANCE, ConsultationEngine.ACTION_PLAN}
-            and detected_intent is None
-            and ConsultationEngine._is_question_like(user_text)
-        ):
-            if intent_candidate in {"remedy", "timing", "detail"}:
-                memory["pending_intent"] = intent_candidate
-            ConsultationEngine._log_intent_event(
-                domain=domain,
-                stage=stage,
-                text=user_text,
-                intent=intent_candidate or "unknown",
-                confidence=float(intent_info.get("confidence") or 0.0),
-                note="clarifier_prompted",
-                method=intent_info.get("method"),
-                matched=intent_info.get("matched"),
+            state["topic"] = selected_topic
+            selected_subtopic = ConsultationEngine._detect_subtopic(
+                selected_topic,
+                user_text,
+                existing_subtopic=state.get("subtopic"),
             )
-            return {
-                "text": ConsultationEngine._intent_clarifier_text(language, script),
-                "next_stage": ConsultationEngine.ACTION_PLAN,
-                "state_blob": ConsultationEngine.dump_state(state),
-            }
-
-        # ------------------------------------------
-        # DOMAIN ENTRY
-        # ------------------------------------------
-
-        if stage == ConsultationEngine.DOMAIN_ENTRY:
-            question = ConsultationEngine._domain_entry_question(domain, language, script)
-            next_stage = (
-                ConsultationEngine.STATUS_CAPTURE
-                if domain == "marriage"
-                else ConsultationEngine.DIAGNOSTIC
-            )
-
-            return {
-                "text": question,
-                "next_stage": next_stage,
-                "state_blob": ConsultationEngine.dump_state(state),
-            }
-
-        # ------------------------------------------
-        # STATUS CAPTURE
-        # ------------------------------------------
-
-        if stage == ConsultationEngine.STATUS_CAPTURE:
-            if domain != "marriage":
-                memory["status"] = str(user_text or "").strip()
-                if ConsultationEngine._is_hi_dev(language, script):
-                    bridge_text = "ठीक है, यह मैंने नोट कर लिया। अब मैं इसे आपकी कुंडली के संकेतों के साथ जोड़कर देखता हूँ।"
-                elif ConsultationEngine._is_hi_rom(language, script):
-                    bridge_text = "Theek hai, maine yeh note kar liya. Ab main ise aapki kundli ke sanketon ke saath dekh raha hoon."
-                else:
-                    bridge_text = "Noted. I will now evaluate this with your chart signals."
+            if not selected_subtopic:
+                text = AstrologyResponseTemplate.subtopic_prompt(selected_topic, language, script)
+                state["last_response_hash"] = ConsultationEngine.hash_response(text)
+                state["last_user_key"] = user_key
+                state["last_state"] = state["state"]
                 return {
-                    "text": bridge_text,
-                    "next_stage": ConsultationEngine.DIAGNOSTIC,
+                    "text": text,
+                    "next_stage": state["state"],
                     "state_blob": ConsultationEngine.dump_state(state),
                 }
 
-            status = ConsultationEngine.parse_status(domain, user_text)
-
-            if not status:
-
-                return {
-                    "text": ConsultationEngine._marriage_retry_prompt(language, script),
-                    "next_stage": ConsultationEngine.STATUS_CAPTURE,
-                    "state_blob": ConsultationEngine.dump_state(state),
-                }
-
-            memory["status"] = status
-
-            question = ConsultationEngine._marriage_diagnostic_prompt(language, script)
-            status_noted = ConsultationEngine._status_noted_text(status, language, script)
-
-            return {
-                "text": f"{status_noted}\n\n{question}",
-                "next_stage": ConsultationEngine.DIAGNOSTIC,
-                "state_blob": ConsultationEngine.dump_state(state),
-            }
-
-        # ------------------------------------------
-        # DIAGNOSTIC
-        # ------------------------------------------
-
-        if stage == ConsultationEngine.DIAGNOSTIC:
-
-            memory["diagnostic"] = user_text
-
-            text = ConsultationEngine._diagnostic_stage_text(
-                domain=domain,
-                domain_data=domain_data,
-                language=language,
-                script=script,
-            )
-
+            state["subtopic"] = selected_subtopic
+            state["depth"] = 1
+            state["state"] = ConsultationEngine.ANALYSIS
+            text = ConsultationEngine._render_with_repetition_guard(state, domain_data, language, script)
+            state["last_user_key"] = user_key
+            state["last_state"] = state["state"]
             return {
                 "text": text,
-                "next_stage": ConsultationEngine.INTERPRETATION,
+                "next_stage": state["state"],
                 "state_blob": ConsultationEngine.dump_state(state),
             }
 
-        # ------------------------------------------
-        # INTERPRETATION
-        # ------------------------------------------
-
-        if stage == ConsultationEngine.INTERPRETATION:
-
-            text = ConsultationEngine._interpretation_stage_text(
-                domain=domain,
-                domain_data=domain_data,
-                language=language,
-                script=script,
-            )
-
+        # Active consultation states.
+        selected_topic = state.get("topic")
+        detected_topic = domain or ConsultationEngine._topic_from_input(user_text, current_topic=selected_topic)
+        if detected_topic and detected_topic != selected_topic:
+            state["topic"] = detected_topic
+            state["subtopic"] = ConsultationEngine._detect_subtopic(detected_topic, user_text)
+            state["depth"] = 1
+            state["last_response_hash"] = None
+            if state["subtopic"]:
+                state["state"] = ConsultationEngine.ANALYSIS
+                text = ConsultationEngine._render_with_repetition_guard(state, domain_data, language, script)
+            else:
+                state["state"] = ConsultationEngine.SUBTOPIC_SELECTION
+                text = AstrologyResponseTemplate.subtopic_prompt(detected_topic, language, script)
+                state["last_response_hash"] = ConsultationEngine.hash_response(text)
+            state["last_user_key"] = user_key
+            state["last_state"] = state["state"]
             return {
                 "text": text,
-                "next_stage": ConsultationEngine.GUIDANCE,
+                "next_stage": state["state"],
                 "state_blob": ConsultationEngine.dump_state(state),
             }
 
-        # ------------------------------------------
-        # GUIDANCE
-        # ------------------------------------------
-
-        if stage == ConsultationEngine.GUIDANCE:
-
-            text = ConsultationEngine._guidance_stage_text(
-                domain=domain,
-                language=language,
-                script=script,
-            )
-
+        if not state.get("topic"):
+            state["state"] = ConsultationEngine.TOPIC_SELECTION
+            text = AstrologyResponseTemplate.topic_prompt(language, script)
+            state["last_response_hash"] = ConsultationEngine.hash_response(text)
+            state["last_user_key"] = user_key
+            state["last_state"] = state["state"]
             return {
                 "text": text,
-                "next_stage": ConsultationEngine.ACTION_PLAN,
+                "next_stage": state["state"],
                 "state_blob": ConsultationEngine.dump_state(state),
             }
 
-        # ------------------------------------------
-
-        if stage == ConsultationEngine.ACTION_PLAN:
-            memory["last_action_focus"] = str(user_text or "").strip()
-            if not memory.get("pending_intent"):
-                memory["pending_intent"] = memory.get("last_requested_intent") or "remedy"
-            text = ConsultationEngine._action_plan_text(
-                domain=domain,
-                domain_data=domain_data,
-                language=language,
-                script=script,
-                user_text=user_text,
-            )
+        if not state.get("subtopic"):
+            state["state"] = ConsultationEngine.SUBTOPIC_SELECTION
+            text = AstrologyResponseTemplate.subtopic_prompt(state["topic"], language, script)
+            state["last_response_hash"] = ConsultationEngine.hash_response(text)
+            state["last_user_key"] = user_key
+            state["last_state"] = state["state"]
             return {
                 "text": text,
-                "next_stage": ConsultationEngine.ACTION_PLAN,
+                "next_stage": state["state"],
                 "state_blob": ConsultationEngine.dump_state(state),
             }
 
-        # ------------------------------------------
+        # Same-state repeated input escalation.
+        if user_key and user_key == state.get("last_user_key") and state.get("last_state") == state.get("state"):
+            state["depth"] = ConsultationEngine._clamp_depth(state.get("depth", 1) + 1)
+            state["state"] = ConsultationEngine._state_for_depth(state["depth"])
+        else:
+            intent = ConsultationEngine._intent_value(normalized_intent, user_text)
+            next_state, next_depth = ConsultationEngine._apply_intent_transition(state, intent, user_text)
+            state["state"] = next_state
+            state["depth"] = ConsultationEngine._clamp_depth(next_depth)
+
+        # Guarantee subtopic remains attached to every deeper response.
+        if not state.get("subtopic"):
+            state["subtopic"] = ConsultationEngine.DEFAULT_SUBTOPIC.get(state["topic"])
+
+        text = ConsultationEngine._render_with_repetition_guard(state, domain_data, language, script)
+        state["last_user_key"] = user_key
+        state["last_state"] = state["state"]
 
         return {
-            "text": ConsultationEngine._next_question_text(language, script),
-            "next_stage": ConsultationEngine.ACTION_PLAN,
+            "text": text,
+            "next_stage": state["state"],
             "state_blob": ConsultationEngine.dump_state(state),
         }

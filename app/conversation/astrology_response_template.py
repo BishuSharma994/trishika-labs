@@ -1,158 +1,287 @@
 class AstrologyResponseTemplate:
 
-    DOMAIN_LABELS = {
-        "career": {"en": "career", "hi_dev": "करियर", "hi_rom": "career"},
-        "finance": {"en": "finance", "hi_dev": "धन", "hi_rom": "paisa"},
-        "marriage": {"en": "marriage", "hi_dev": "विवाह", "hi_rom": "shaadi"},
-        "health": {"en": "health", "hi_dev": "स्वास्थ्य", "hi_rom": "health"}
+    TOPIC_LABELS = {
+        "career": {"en": "career", "hi_rom": "career", "hi_dev": "करियर"},
+        "finance": {"en": "finance", "hi_rom": "finance", "hi_dev": "वित्त"},
+        "marriage": {"en": "marriage", "hi_rom": "shaadi", "hi_dev": "विवाह"},
+        "health": {"en": "health", "hi_rom": "swasthya", "hi_dev": "स्वास्थ्य"},
+    }
+
+    SUBTOPIC_LABELS = {
+        "career": {
+            "job_switch": {"en": "job switch", "hi_rom": "naukri badalna", "hi_dev": "नौकरी बदलना"},
+            "promotion": {"en": "promotion", "hi_rom": "padonnati", "hi_dev": "पदोन्नति"},
+            "business_direction": {"en": "business direction", "hi_rom": "vyavsay disha", "hi_dev": "व्यवसाय दिशा"},
+        },
+        "finance": {
+            "savings": {"en": "savings", "hi_rom": "bachat", "hi_dev": "बचत"},
+            "investment": {"en": "investment", "hi_rom": "nivesh", "hi_dev": "निवेश"},
+            "debt_management": {"en": "debt management", "hi_rom": "karz prabandhan", "hi_dev": "कर्ज प्रबंधन"},
+        },
+        "marriage": {
+            "single_path": {"en": "new relationship path", "hi_rom": "naye rishtay ki disha", "hi_dev": "नए रिश्ते की दिशा"},
+            "relationship_stability": {"en": "relationship stability", "hi_rom": "rishtay ki sthirta", "hi_dev": "रिश्ते की स्थिरता"},
+            "married_life": {"en": "married life", "hi_rom": "vivahit jeevan", "hi_dev": "विवाहित जीवन"},
+        },
+        "health": {
+            "stress": {"en": "stress", "hi_rom": "tanav", "hi_dev": "तनाव"},
+            "lifestyle_balance": {"en": "lifestyle balance", "hi_rom": "jeevanshaili santulan", "hi_dev": "जीवनशैली संतुलन"},
+            "specific_condition": {"en": "specific condition", "hi_rom": "vishesh sthiti", "hi_dev": "विशेष स्थिति"},
+        },
+    }
+
+    SUBTOPIC_OPTIONS = {
+        "career": {
+            "en": "job switch, promotion, or business direction",
+            "hi_rom": "naukri badalna, padonnati, ya vyavsay disha",
+            "hi_dev": "नौकरी बदलना, पदोन्नति, या व्यवसाय दिशा",
+        },
+        "finance": {
+            "en": "savings, investment, or debt management",
+            "hi_rom": "bachat, nivesh, ya karz prabandhan",
+            "hi_dev": "बचत, निवेश, या कर्ज प्रबंधन",
+        },
+        "marriage": {
+            "en": "new relationship, relationship stability, or married life",
+            "hi_rom": "naya rishta, rishtay ki sthirta, ya vivahit jeevan",
+            "hi_dev": "नया रिश्ता, रिश्ते की स्थिरता, या विवाहित जीवन",
+        },
+        "health": {
+            "en": "stress, lifestyle balance, or specific condition",
+            "hi_rom": "tanav, jeevanshaili santulan, ya vishesh sthiti",
+            "hi_dev": "तनाव, जीवनशैली संतुलन, या विशेष स्थिति",
+        },
     }
 
     @staticmethod
     def _is_hi_dev(language, script):
-        return language == "hi" and script == "devanagari"
+        return language in {"hindi_devanagari", "hi_dev"} or (language == "hi" and script == "devanagari")
 
     @staticmethod
     def _is_hi_rom(language, script):
-        return language == "hi" and script == "roman"
+        return language in {"hindi_roman", "hi_rom"} or (language == "hi" and script in {"roman", "latin"})
 
     @staticmethod
-    def _domain_name(domain, language, script):
-        labels = AstrologyResponseTemplate.DOMAIN_LABELS.get(domain, {})
-
+    def _lang_key(language, script):
         if AstrologyResponseTemplate._is_hi_dev(language, script):
-            return labels.get("hi_dev", "इस विषय")
-
+            return "hi_dev"
         if AstrologyResponseTemplate._is_hi_rom(language, script):
-            return labels.get("hi_rom", "is vishay")
-
-        return labels.get("en", "this area")
-
-    @staticmethod
-    def _headers():
-        return {
-            "observation": "Observation:",
-            "cause": "Planetary Cause:",
-            "timing": "Timing Insight:",
-            "guidance": "Guidance:",
-            "followup": "Follow-up Question:"
-        }
+            return "hi_rom"
+        return "en"
 
     @staticmethod
-    def _build_observation(domain, score, language, script):
-        domain_name = AstrologyResponseTemplate._domain_name(domain, language, script)
-
+    def _localized(language, script, en, hi_rom, hi_dev):
         if AstrologyResponseTemplate._is_hi_dev(language, script):
-            tone = "मजबूत" if score >= 65 else "मध्यम" if score >= 50 else "चुनौतीपूर्ण"
-            return f"आपकी कुंडली में {domain_name} के योग {tone} दिखाई दे रहे हैं।"
-
+            return hi_dev
         if AstrologyResponseTemplate._is_hi_rom(language, script):
-            tone = "strong" if score >= 65 else "moderate" if score >= 50 else "challenging"
-            return f"Aapki kundli mein {domain_name} ke yog {tone} dikh rahe hain."
-
-        tone = "strong" if score >= 65 else "moderate" if score >= 50 else "challenging"
-        return f"Your chart shows {tone} indications in {domain_name}."
+            return hi_rom
+        return en
 
     @staticmethod
-    def _build_cause(primary_driver, language, script):
-        planet = primary_driver or "Unknown"
-
-        if AstrologyResponseTemplate._is_hi_dev(language, script):
-            return f"{planet} का प्रभाव इस विषय का मुख्य कारण बन रहा है और परिणामों को प्रभावित कर रहा है।"
-
-        if AstrologyResponseTemplate._is_hi_rom(language, script):
-            return f"{planet} ka prabhav is vishay ka primary cause ban raha hai aur results ko influence kar raha hai."
-
-        return f"{planet} is the primary planetary driver shaping outcomes in this area."
+    def topic_label(topic, language, script):
+        key = AstrologyResponseTemplate._lang_key(language, script)
+        labels = AstrologyResponseTemplate.TOPIC_LABELS.get(topic, {})
+        return labels.get(key, topic or "topic")
 
     @staticmethod
-    def _build_timing(momentum, language, script):
-        m = (momentum or "Neutral").lower()
-
-        if AstrologyResponseTemplate._is_hi_dev(language, script):
-            if m == "positive":
-                return "आने वाले 2-3 वर्षों में धीरे-धीरे प्रगति और स्थिरता के संकेत मजबूत हैं।"
-            if m == "challenging":
-                return "अगले 12-18 महीनों में सावधानी के साथ धीरे-धीरे सुधार की संभावना है।"
-            return "अगले 1-2 वर्षों में परिणाम क्रमिक रूप से बेहतर हो सकते हैं।"
-
-        if AstrologyResponseTemplate._is_hi_rom(language, script):
-            if m == "positive":
-                return "Agle 2-3 saalon mein dheere dheere progress aur stability ke strong signals hain."
-            if m == "challenging":
-                return "Agle 12-18 mahino mein caution ke saath gradual sudhar possible hai."
-            return "Agle 1-2 saalon mein results dheere dheere better ho sakte hain."
-
-        if m == "positive":
-            return "Over the next 2-3 years, momentum supports gradual growth and stronger stability."
-        if m == "challenging":
-            return "Over the next 12-18 months, improvement is possible with caution and patience."
-        return "Over the next 1-2 years, progress is likely to be gradual."
-
-    @staticmethod
-    def _build_guidance(ai_guidance, risk_factor, language, script):
-        base_guidance = (ai_guidance or "").strip()
-        risk = risk_factor or "Unknown"
-
-        if AstrologyResponseTemplate._is_hi_dev(language, script):
-            warning = f"चेतावनी: {risk} से जुड़े उतार-चढ़ाव में जल्दबाजी से बचें।"
-            return f"{warning} {base_guidance}".strip()
-
-        if AstrologyResponseTemplate._is_hi_rom(language, script):
-            warning = f"Warning: {risk} se jude utar-chadhav mein jaldbaazi se bachein."
-            return f"{warning} {base_guidance}".strip()
-
-        warning = f"Warning: avoid impulsive decisions around {risk}-linked fluctuations."
-        return f"{warning} {base_guidance}".strip()
-
-    @staticmethod
-    def _build_followup(domain, language, script):
-        if AstrologyResponseTemplate._is_hi_dev(language, script):
-            if domain == "career":
-                return "क्या आप नौकरी बदलना चाहते हैं या प्रमोशन पर ध्यान दे रहे हैं?"
-            if domain == "finance":
-                return "क्या आपका फोकस बचत पर है या निवेश पर?"
-            if domain == "marriage":
-                return "क्या आप नए रिश्ते की तलाश में हैं या मौजूदा संबंध पर स्पष्टता चाहते हैं?"
-            return "क्या आपका सवाल लाइफस्टाइल, तनाव या किसी विशेष स्वास्थ्य चिंता से जुड़ा है?"
-
-        if AstrologyResponseTemplate._is_hi_rom(language, script):
-            if domain == "career":
-                return "Kya aap job switch chahte hain ya promotion par focus kar rahe hain?"
-            if domain == "finance":
-                return "Kya aapka focus savings par hai ya investment par?"
-            if domain == "marriage":
-                return "Kya aap naya rishta dekh rahe hain ya existing relationship par clarity chahte hain?"
-            return "Kya aapka sawal lifestyle, stress ya kisi specific health concern se juda hai?"
-
-        if domain == "career":
-            return "Are you focused on a job switch, or growth in your current role?"
-        if domain == "finance":
-            return "Are you prioritizing savings, debt reduction, or investments right now?"
-        if domain == "marriage":
-            return "Are you seeking a new relationship, or clarity in an existing one?"
-        return "Is your concern mainly lifestyle balance, stress, or a specific health pattern?"
-
-    @staticmethod
-    def build_response(domain, domain_data, ai_guidance, language, script):
-        domain_data = domain_data or {}
-
-        score = domain_data.get("score", 50)
-        primary_driver = domain_data.get("primary_driver", "Unknown")
-        risk_factor = domain_data.get("risk_factor", "Unknown")
-        momentum = domain_data.get("momentum", "Neutral")
-
-        headers = AstrologyResponseTemplate._headers()
-
-        observation = AstrologyResponseTemplate._build_observation(domain, score, language, script)
-        cause = AstrologyResponseTemplate._build_cause(primary_driver, language, script)
-        timing = AstrologyResponseTemplate._build_timing(momentum, language, script)
-        guidance = AstrologyResponseTemplate._build_guidance(ai_guidance, risk_factor, language, script)
-        followup = AstrologyResponseTemplate._build_followup(domain, language, script)
-
-        return (
-            f"{headers['observation']}\n{observation}\n\n"
-            f"{headers['cause']}\n{cause}\n\n"
-            f"{headers['timing']}\n{timing}\n\n"
-            f"{headers['guidance']}\n{guidance}\n\n"
-            f"{headers['followup']}\n{followup}"
+    def subtopic_label(topic, subtopic, language, script):
+        key = AstrologyResponseTemplate._lang_key(language, script)
+        labels = AstrologyResponseTemplate.SUBTOPIC_LABELS.get(topic, {}).get(subtopic, {})
+        if labels:
+            return labels.get(key, subtopic or "focus")
+        return subtopic or AstrologyResponseTemplate._localized(
+            language,
+            script,
+            "focus",
+            "focus",
+            "फोकस",
         )
+
+    @staticmethod
+    def topic_prompt(language, script):
+        return AstrologyResponseTemplate._localized(
+            language,
+            script,
+            "Please choose one topic: career, marriage, finance, or health.",
+            "Kripya ek topic chuniye: career, shaadi, finance, ya health.",
+            "कृपया एक विषय चुनें: करियर, विवाह, वित्त, या स्वास्थ्य।",
+        )
+
+    @staticmethod
+    def subtopic_prompt(topic, language, script):
+        key = AstrologyResponseTemplate._lang_key(language, script)
+        options = AstrologyResponseTemplate.SUBTOPIC_OPTIONS.get(topic, {}).get(
+            key,
+            AstrologyResponseTemplate.SUBTOPIC_OPTIONS.get(topic, {}).get("en", "your current focus"),
+        )
+        topic_label = AstrologyResponseTemplate.topic_label(topic, language, script)
+        return AstrologyResponseTemplate._localized(
+            language,
+            script,
+            f"In {topic_label}, what is your exact focus: {options}?",
+            f"{topic_label} mein aapka spasht kendr kya hai: {options}?",
+            f"{topic_label} में आपका सटीक फोकस क्या है: {options}?",
+        )
+
+    @staticmethod
+    def _momentum_label(momentum, language, script):
+        key = str(momentum or "neutral").strip().lower()
+        if key == "positive":
+            return AstrologyResponseTemplate._localized(language, script, "supportive", "anukul", "अनुकूल")
+        if key == "challenging":
+            return AstrologyResponseTemplate._localized(language, script, "sensitive", "sankraman-sheel", "संवेदनशील")
+        return AstrologyResponseTemplate._localized(language, script, "neutral", "santulit", "संतुलित")
+
+    @staticmethod
+    def _followup_line(state, language, script):
+        if state == "ANALYSIS":
+            return AstrologyResponseTemplate._localized(
+                language,
+                script,
+                "Type: timing, guidance, remedy, or more.",
+                "Likhiye: samay, margdarshan, upay, ya aur vivaran.",
+                "लिखें: समय, मार्गदर्शन, उपाय, या और विवरण।",
+            )
+        if state == "TIMING":
+            return AstrologyResponseTemplate._localized(
+                language,
+                script,
+                "If needed next: guidance or remedy.",
+                "Agar chahen agla charan: margdarshan ya upay.",
+                "यदि चाहें अगला चरण: मार्गदर्शन या उपाय।",
+            )
+        if state == "GUIDANCE":
+            return AstrologyResponseTemplate._localized(
+                language,
+                script,
+                "If needed next: remedy or timing.",
+                "Agar chahen agla charan: upay ya samay margdarshan.",
+                "यदि चाहें अगला चरण: उपाय या समय।",
+            )
+        return AstrologyResponseTemplate._localized(
+            language,
+            script,
+            "You can ask for another topic anytime.",
+            "Aap kabhi bhi doosra topic puch sakte hain.",
+            "आप कभी भी दूसरा विषय पूछ सकते हैं।",
+        )
+
+    @staticmethod
+    def build_state_response(state, topic, subtopic, domain_data, language, script):
+        data = domain_data or {}
+        components = data.get("components", {}) or {}
+
+        score = int(data.get("score", 50))
+        projection = int(data.get("projection_next_year", score))
+        driver = str(data.get("primary_driver", "Unknown"))
+        risk = str(data.get("risk_factor", "Unknown"))
+        momentum_label = AstrologyResponseTemplate._momentum_label(data.get("momentum"), language, script)
+        topic_label = AstrologyResponseTemplate.topic_label(topic, language, script)
+        subtopic_label = AstrologyResponseTemplate.subtopic_label(topic, subtopic, language, script)
+
+        house_struct = int(components.get("house_structural", 50))
+        lord_strength = int(components.get("house_lord_strength", 50))
+        ashtakavarga = int(components.get("ashtakavarga", 50))
+        dasha = int(components.get("dasha_activation", 50))
+
+        if state == "ANALYSIS":
+            message = AstrologyResponseTemplate._localized(
+                language,
+                script,
+                (
+                    f"{topic_label.title()} - {subtopic_label}: chart score {score}/100. "
+                    f"Primary driver {driver}; pressure point {risk}."
+                ),
+                (
+                    f"{topic_label.capitalize()} - {subtopic_label}: kundli ank {score}/100. "
+                    f"Mukhya grah prabhav {driver}; dabav bindu {risk}."
+                ),
+                (
+                    f"{topic_label} - {subtopic_label}: चार्ट स्कोर {score}/100। "
+                    f"मुख्य प्रभाव {driver}; दबाव बिंदु {risk}।"
+                ),
+            )
+            return f"{message}\n\n{AstrologyResponseTemplate._followup_line(state, language, script)}"
+
+        if state == "EXPLANATION":
+            message = AstrologyResponseTemplate._localized(
+                language,
+                script,
+                (
+                    f"{topic_label.title()} - {subtopic_label} breakdown: "
+                    f"structure {house_struct}, lord strength {lord_strength}, "
+                    f"ashtakavarga {ashtakavarga}, dasha activation {dasha}."
+                ),
+                (
+                    f"{topic_label.capitalize()} - {subtopic_label} ka vishleshan: "
+                    f"sanrachna {house_struct}, swami bal {lord_strength}, "
+                    f"ashtakavarga {ashtakavarga}, dasha sakriyata {dasha}."
+                ),
+                (
+                    f"{topic_label} - {subtopic_label} का विभाजन: "
+                    f"संरचना {house_struct}, स्वामी बल {lord_strength}, "
+                    f"अष्टकवर्ग {ashtakavarga}, दशा सक्रियता {dasha}।"
+                ),
+            )
+            return f"{message}\n\n{AstrologyResponseTemplate._followup_line('ANALYSIS', language, script)}"
+
+        if state == "TIMING":
+            message = AstrologyResponseTemplate._localized(
+                language,
+                script,
+                (
+                    f"{topic_label.title()} - {subtopic_label} timing: momentum flag {momentum_label}, "
+                    f"next-year projection {projection}/100."
+                ),
+                (
+                    f"{topic_label.capitalize()} - {subtopic_label} ka samay sanket: gati sthiti {momentum_label}, "
+                    f"agle varsh ka anumaan {projection}/100."
+                ),
+                (
+                    f"{topic_label} - {subtopic_label} का समय संकेत: गति स्थिति {momentum_label}, "
+                    f"अगले वर्ष का अनुमान {projection}/100।"
+                ),
+            )
+            return f"{message}\n\n{AstrologyResponseTemplate._followup_line(state, language, script)}"
+
+        if state == "GUIDANCE":
+            message = AstrologyResponseTemplate._localized(
+                language,
+                script,
+                (
+                    f"{topic_label.title()} - {subtopic_label} action plan: "
+                    f"(1) one focused step daily, (2) avoid high-risk decisions during {risk}-trigger periods, "
+                    "(3) weekly score review."
+                ),
+                (
+                    f"{topic_label.capitalize()} - {subtopic_label} ke liye karya yojana: "
+                    f"(1) roz ek kendrit kadam, (2) {risk} ke dauran jald nirnay se bachen, "
+                    "(3) saptahik pragati samiksha karein."
+                ),
+                (
+                    f"{topic_label} - {subtopic_label} कार्य योजना: "
+                    f"(1) रोज एक केंद्रित कदम, (2) {risk} के दौरान जल्द निर्णय न लें, "
+                    "(3) साप्ताहिक प्रगति समीक्षा करें।"
+                ),
+            )
+            return f"{message}\n\n{AstrologyResponseTemplate._followup_line(state, language, script)}"
+
+        message = AstrologyResponseTemplate._localized(
+            language,
+            script,
+            (
+                f"{topic_label.title()} - {subtopic_label} remedy track: "
+                f"align routine with {driver}, control reactions linked with {risk}, and follow a 21-day consistency cycle."
+            ),
+            (
+                f"{topic_label.capitalize()} - {subtopic_label} upay path: "
+                f"{driver} anukool dincharya rakhein, {risk} se judi pratikriya niyantrit karein, "
+                "aur 21-din lagatar anushasan apnaayein."
+            ),
+            (
+                f"{topic_label} - {subtopic_label} उपाय पथ: "
+                f"{driver} अनुकूल दिनचर्या रखें, {risk} से जुड़ी प्रतिक्रियाएँ नियंत्रित करें, "
+                "और 21-दिन का नियमित अनुशासन अपनाएँ।"
+            ),
+        )
+        return f"{message}\n\n{AstrologyResponseTemplate._followup_line('REMEDY', language, script)}"
