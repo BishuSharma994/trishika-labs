@@ -5,6 +5,8 @@ from difflib import SequenceMatcher
 
 from app.conversation.astrology_response_template import AstrologyResponseTemplate
 from app.conversation.intent_router import IntentRouter
+from app.conversation.life_translation_engine import translate_to_life_guidance
+from app.conversation.persona_layer import PersonaLayer
 
 
 class ConsultationEngine:
@@ -101,6 +103,12 @@ class ConsultationEngine:
     }
 
     TOPIC_FALLBACK_ORDER = ("career", "marriage", "finance", "health")
+    TOPIC_HOUSE_MAP = {
+        "career": 10,
+        "finance": 2,
+        "marriage": 7,
+        "health": 6,
+    }
 
     @staticmethod
     def _default_state(language="english"):
@@ -211,16 +219,19 @@ class ConsultationEngine:
         if depth <= 2:
             return ConsultationEngine.ANALYSIS
         if depth == 3:
-            return ConsultationEngine.TIMING
-        if depth == 4:
             return ConsultationEngine.GUIDANCE
         return ConsultationEngine.REMEDY
 
     @staticmethod
-    def _render_mode_for_state(state, depth):
-        if state == ConsultationEngine.ANALYSIS and ConsultationEngine._clamp_depth(depth) == 2:
-            return "EXPLANATION"
-        return state
+    def _escalation_level(state_name, depth):
+        depth = ConsultationEngine._clamp_depth(depth)
+        if state_name == ConsultationEngine.REMEDY or depth >= 4:
+            return 4
+        if state_name == ConsultationEngine.GUIDANCE or depth == 3:
+            return 3
+        if state_name == ConsultationEngine.TIMING or depth == 2:
+            return 2
+        return 1
 
     @staticmethod
     def _best_similarity_match(tokens, keywords):
@@ -284,13 +295,13 @@ class ConsultationEngine:
         current_state = state.get("state")
 
         if intent == "timing":
-            depth = max(depth, 3)
+            depth = max(depth, 2)
             return ConsultationEngine.TIMING, depth
         if intent == "guidance":
-            depth = max(depth, 4)
+            depth = max(depth, 3)
             return ConsultationEngine.GUIDANCE, depth
         if intent == "remedy":
-            depth = 5
+            depth = max(depth, 4)
             return ConsultationEngine.REMEDY, depth
         if intent in {"detail", "explanation", "affirm"}:
             depth = min(ConsultationEngine.DEPTH_MAX, depth + 1)
@@ -310,13 +321,44 @@ class ConsultationEngine:
         return current_state, depth
 
     @staticmethod
+    def _build_analysis_payload(state, domain_data):
+        data = domain_data or {}
+        topic = state.get("topic")
+        score = data.get("score", 50)
+        try:
+            numeric_score = int(score)
+        except Exception:
+            numeric_score = 50
+
+        if numeric_score >= 70:
+            strength = "strong"
+        elif numeric_score >= 50:
+            strength = "moderate"
+        else:
+            strength = "weak"
+
+        return {
+            "planet": data.get("primary_driver") or "Moon",
+            "house": ConsultationEngine.TOPIC_HOUSE_MAP.get(topic, 1),
+            "strength": strength,
+            "risk_planet": data.get("risk_factor") or "Mars",
+            "supporting_planet": data.get("primary_driver") or "Jupiter",
+            "score": numeric_score,
+            "momentum": data.get("momentum"),
+        }
+
+    @staticmethod
     def _render_consultation_response(state, domain_data, language, script):
-        render_mode = ConsultationEngine._render_mode_for_state(state.get("state"), state.get("depth"))
-        return AstrologyResponseTemplate.build_state_response(
-            state=render_mode,
+        level = ConsultationEngine._escalation_level(state.get("state"), state.get("depth"))
+        analysis_payload = ConsultationEngine._build_analysis_payload(state, domain_data)
+        life_guidance = translate_to_life_guidance(
+            analysis=analysis_payload,
             topic=state.get("topic"),
             subtopic=state.get("subtopic"),
-            domain_data=domain_data or {},
+            depth=level,
+        )
+        return PersonaLayer.format_guidance(
+            guidance=life_guidance,
             language=language,
             script=script,
         )
