@@ -51,6 +51,50 @@ class LanguageEngine:
 
     # -----------------------------------------------------------------
     @staticmethod
+    def _detect_explicit_switch_request(text):
+        t = str(text or "").strip().lower()
+        t_norm = re.sub(r"\s+", " ", t)
+
+        english_phrases = {
+            "english",
+            "in english",
+            "reply in english",
+            "speak english",
+            "talk in english",
+            "english please",
+            "english me",
+            "english mein",
+            "switch to english",
+        }
+        hindi_dev_phrases = {
+            "hindi",
+            "हिंदी",
+            "in hindi",
+            "hindi me",
+            "hindi mein",
+            "switch to hindi",
+        }
+        hindi_rom_phrases = {
+            "hindi roman",
+            "hindi (roman)",
+            "roman hindi",
+            "hinglish",
+            "in hindi roman",
+            "hindi roman me",
+            "hindi roman mein",
+            "switch to hindi roman",
+        }
+
+        if t_norm in english_phrases or re.search(r"(reply|speak|talk|switch).*(english)", t_norm):
+            return LanguageEngine.ENGLISH
+        if t_norm in hindi_rom_phrases:
+            return LanguageEngine.HINDI_ROMAN
+        if t_norm in hindi_dev_phrases or re.search(r"(reply|speak|talk|switch).*(hindi)", t_norm):
+            return LanguageEngine.HINDI_DEVANAGARI
+        return None
+
+    # -----------------------------------------------------------------
+    @staticmethod
     def handle_language(session, user_message):
         text      = str(user_message or "").strip()
         state     = LanguageEngine.load_state(getattr(session, "language_state_blob", None))
@@ -59,9 +103,28 @@ class LanguageEngine:
 
         # If language already confirmed, only react to explicit re-selection
         if confirmed:
-            explicit_switches = {"english", "hindi", "\u0939\u093f\u0902\u0926\u0940", "hindi (roman)"}
-            if text.lower() not in explicit_switches and text not in explicit_switches:
+            requested_mode = LanguageEngine._detect_explicit_switch_request(text)
+            if not requested_mode:
                 return None
+            if requested_mode == mode:
+                return None
+
+            script = "devanagari" if requested_mode == LanguageEngine.HINDI_DEVANAGARI else ("roman" if requested_mode == LanguageEngine.HINDI_ROMAN else "latin")
+            switch_text = {
+                LanguageEngine.ENGLISH: "Switched to English.",
+                LanguageEngine.HINDI_ROMAN: "Hindi Roman par switch kar diya gaya hai.",
+                LanguageEngine.HINDI_DEVANAGARI: "हिंदी पर स्विच कर दिया गया है।",
+            }
+            return {
+                "response": {
+                    "text": switch_text[requested_mode],
+                    "keyboard": {"remove_keyboard": True},
+                },
+                "language_mode": requested_mode,
+                "language_confirmed": True,
+                "script": script,
+                "state_blob": LanguageEngine.dump_state({"awaiting": False, "pending": None}),
+            }
 
         # Button text to language mode map
         lang_button_map = {

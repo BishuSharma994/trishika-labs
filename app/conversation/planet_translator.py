@@ -30,7 +30,7 @@ class PlanetTranslator:
         if not text:
             return text
 
-        if language != "hi":
+        if language not in {"hi", "hindi_roman", "hindi_devanagari"}:
             return text
 
         mapping = PlanetTranslator.MAP_DEV if script == "devanagari" else PlanetTranslator.MAP_ROM
