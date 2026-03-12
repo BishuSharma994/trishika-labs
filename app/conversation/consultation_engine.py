@@ -23,9 +23,9 @@ class ConsultationEngine:
 
     STATUS_MAP = {
         "marriage": {
-            "single": ["1","single","not married"],
-            "relationship": ["2","relationship","dating"],
-            "married": ["3","married","already married","spouse"]
+            "single": ["1","single","not married","avivahit","अविवाहित"],
+            "relationship": ["2","relationship","dating","sambandh","संबंध"],
+            "married": ["3","married","already married","spouse","vivahit","विवाहित"]
         }
     }
 
@@ -50,19 +50,19 @@ class ConsultationEngine:
         if domain == "marriage":
             if ConsultationEngine._is_hi_dev(language, script):
                 return (
-                    "विवाह पर सही मार्गदर्शन देने के लिए पहले आपकी current situation समझना जरूरी है।\n\n"
-                    "आपकी current situation क्या है?\n"
-                    "1. Single\n"
-                    "2. Relationship में\n"
-                    "3. Already married"
+                    "विवाह पर सही मार्गदर्शन के लिए पहले आपकी वर्तमान स्थिति समझना जरूरी है।\n\n"
+                    "आपकी स्थिति क्या है?\n"
+                    "1. अविवाहित\n"
+                    "2. संबंध में\n"
+                    "3. विवाहित"
                 )
             if ConsultationEngine._is_hi_rom(language, script):
                 return (
-                    "Shaadi ke baare mein sahi guidance dene ke liye pehle current situation samajhna zaroori hai.\n\n"
-                    "Aapki current situation kya hai?\n"
-                    "1. Single\n"
-                    "2. Relationship mein\n"
-                    "3. Already married"
+                    "Shaadi par sahi margdarshan ke liye pehle aapki vartaman sthiti samajhna zaroori hai.\n\n"
+                    "Aapki sthiti kya hai?\n"
+                    "1. Avivahit\n"
+                    "2. Sambandh mein\n"
+                    "3. Vivahit"
                 )
             return (
                 "To guide you accurately on marriage, I first need your current relationship status.\n\n"
@@ -74,19 +74,19 @@ class ConsultationEngine:
 
         if ConsultationEngine._is_hi_dev(language, script):
             questions = {
-                "career": "करियर में आपका अभी मुख्य फोकस किस पर है: job switch, promotion, या business direction?",
-                "finance": "वित्त में आपका अभी मुख्य फोकस क्या है: बचत, निवेश, या कर्ज प्रबंधन?",
-                "health": "स्वास्थ्य में आपकी मुख्य चिंता क्या है: stress, lifestyle balance, या कोई specific issue?",
+                "career": "करियर में आपका मुख्य ध्यान किस पर है: नौकरी बदलना, पदोन्नति, या व्यापार दिशा?",
+                "finance": "वित्त में आपका मुख्य ध्यान किस पर है: बचत, निवेश, या कर्ज प्रबंधन?",
+                "health": "स्वास्थ्य में आपकी मुख्य चिंता क्या है: तनाव, जीवनशैली संतुलन, या कोई विशेष समस्या?",
             }
-            return questions.get(domain, "कृपया इस विषय से जुड़ी अपनी वर्तमान स्थिति एक लाइन में बताएं।")
+            return questions.get(domain, "कृपया इस विषय से जुड़ी अपनी वर्तमान स्थिति एक पंक्ति में बताएं।")
 
         if ConsultationEngine._is_hi_rom(language, script):
             questions = {
-                "career": "Career mein aapka abhi main focus kis par hai: job switch, promotion, ya business direction?",
-                "finance": "Finance mein aap abhi kis par focus kar rahe hain: savings, investment, ya debt management?",
-                "health": "Health mein aapki main concern kya hai: stress, lifestyle balance, ya koi specific issue?",
+                "career": "Career mein aapka mukhya dhyan kis par hai: naukri badalna, padonnati, ya vyavsay disha?",
+                "finance": "Vitt mein aapka mukhya dhyan kis par hai: bachat, nivesh, ya karz prabandhan?",
+                "health": "Swasthya mein aapki mukhya chinta kya hai: tanav, jeevanshaili santulan, ya koi vishesh samasya?",
             }
-            return questions.get(domain, "Kripya is topic se judi apni current situation ek line mein batayein.")
+            return questions.get(domain, "Kripya is vishay se judi apni vartaman sthiti ek pankti mein batayiye.")
 
         questions = {
             "career": "In career, what is your current focus: job switch, promotion, or business direction?",
@@ -98,17 +98,17 @@ class ConsultationEngine:
     @staticmethod
     def _marriage_retry_prompt(language, script):
         if ConsultationEngine._is_hi_dev(language, script):
-            return "कृपया एक विकल्प चुनें:\n1 Single\n2 Relationship\n3 Married"
+            return "कृपया एक विकल्प चुनें:\n1 अविवाहित\n2 संबंध में\n3 विवाहित"
         if ConsultationEngine._is_hi_rom(language, script):
-            return "Please ek option choose karein:\n1 Single\n2 Relationship\n3 Married"
+            return "Kripya ek vikalp chuniye:\n1 Avivahit\n2 Sambandh mein\n3 Vivahit"
         return "Please choose one option.\n1 Single\n2 Relationship\n3 Married"
 
     @staticmethod
     def _marriage_diagnostic_prompt(language, script):
         if ConsultationEngine._is_hi_dev(language, script):
-            return "वर्तमान relationship harmony stable है, mixed है, या stress में है?"
+            return "वर्तमान संबंध की स्थिति स्थिर है, मिश्रित है, या तनावपूर्ण है?"
         if ConsultationEngine._is_hi_rom(language, script):
-            return "Current relationship harmony stable hai, mixed hai, ya stress mein hai?"
+            return "Vartaman sambandh ki sthiti sthir hai, mishrit hai, ya tanavpurn hai?"
         return "Is your current relationship harmony stable, mixed, or under stress?"
 
     @staticmethod
@@ -130,33 +130,124 @@ class ConsultationEngine:
         )
 
     @staticmethod
-    def _diagnostic_stage_text(language, script):
+    def _domain_label(domain, language, script):
+        labels = {
+            "career": ("career", "career", "करियर"),
+            "finance": ("finance", "finance", "वित्त"),
+            "marriage": ("relationship", "shaadi", "विवाह"),
+            "health": ("health", "health", "स्वास्थ्य"),
+        }
+        en, hi_rom, hi_dev = labels.get(domain, ("this area", "is area", "इस विषय"))
+        return ConsultationEngine._localized(language, script, en, hi_rom, hi_dev)
+
+    @staticmethod
+    def _diagnostic_stage_text(domain, domain_data, language, script):
+        primary_driver = domain_data.get("primary_driver") or "current graha period"
+        risk_factor = domain_data.get("risk_factor") or "emotional overreaction"
+        domain_label = ConsultationEngine._domain_label(domain, language, script)
         return ConsultationEngine._localized(
             language,
             script,
-            "Based on your chart signals and what you shared, the situation looks workable but requires patience.",
-            "Aapke chart signals aur aapki baat ke hisaab se situation workable lag rahi hai, lekin patience rakhna zaroori hoga.",
-            "आपकी कुंडली के संकेतों और आपकी बात के अनुसार स्थिति संभाली जा सकती है, लेकिन धैर्य रखना जरूरी होगा।",
+            (
+                f"From your chart and what you shared, this {domain_label} situation is workable. "
+                f"The key driver is {primary_driver}, so progress is possible if you stay patient and consistent."
+            ),
+            (
+                f"Aapne jo share kiya aur chart signals dekhkar lagta hai ki {domain_label} ki situation manageable hai. "
+                f"Ismein {primary_driver} ka strong role hai, aur {risk_factor} se bachkar chalna zaroori hoga."
+            ),
+            (
+                f"आपने जो साझा किया और कुंडली संकेत देखकर लगता है कि {domain_label} की स्थिति संभाली जा सकती है। "
+                f"इसमें {primary_driver} का प्रभाव प्रमुख है, इसलिए {risk_factor} से बचते हुए धैर्य रखना जरूरी होगा।"
+            ),
         )
 
     @staticmethod
-    def _interpretation_stage_text(language, script):
+    def _interpretation_stage_text(domain, domain_data, language, script):
+        momentum = (domain_data.get("momentum") or "neutral").lower()
+        if momentum == "positive":
+            en_momentum = "momentum is supportive right now"
+            hi_rom_momentum = "momentum abhi supportive hai"
+            hi_dev_momentum = "गति इस समय सहायक है"
+        elif momentum == "challenging":
+            en_momentum = "the phase is sensitive right now"
+            hi_rom_momentum = "yeh phase abhi sensitive hai"
+            hi_dev_momentum = "यह चरण अभी संवेदनशील है"
+        else:
+            en_momentum = "momentum is mixed at the moment"
+            hi_rom_momentum = "momentum abhi mixed hai"
+            hi_dev_momentum = "गति इस समय मिश्रित है"
+
         return ConsultationEngine._localized(
             language,
             script,
-            "Planetary combinations suggest that decisions in this phase should be slow and well-structured.",
-            "Planetary combinations yeh suggest karte hain ki is phase mein decisions dheere aur well-structured tareeke se lene chahiye.",
-            "ग्रह संयोजन संकेत देते हैं कि इस चरण में निर्णय धीरे और सुव्यवस्थित तरीके से लेने चाहिए।",
+            (
+                f"Planetary combinations show that {en_momentum}. "
+                "Take decisions in steps instead of one big jump, and verify timing before major commitments."
+            ),
+            (
+                f"Planetary combinations dikhate hain ki {hi_rom_momentum}. "
+                "Decisions ek hi baar mein na lein, step-by-step lein, aur bade commitments se pehle timing check karein."
+            ),
+            (
+                f"ग्रह संयोजन दिखाते हैं कि {hi_dev_momentum}। "
+                "निर्णय एक बार में लेने के बजाय चरणों में लें और बड़े commitments से पहले timing जांचें।"
+            ),
         )
 
     @staticmethod
-    def _guidance_stage_text(language, script):
+    def _guidance_stage_text(domain, language, script):
+        domain_label = ConsultationEngine._domain_label(domain, language, script)
         return ConsultationEngine._localized(
             language,
             script,
-            "Focus on improving communication and avoid reacting impulsively.",
-            "Communication improve karne par focus rakhein aur impulsive reaction se bachein.",
-            "संचार बेहतर करने पर ध्यान दें और आवेग में प्रतिक्रिया देने से बचें।",
+            (
+                f"For better {domain_label} outcomes, keep communication clear, "
+                "avoid impulsive reactions, and review progress weekly."
+            ),
+            (
+                f"Better {domain_label} results ke liye communication clear rakhein, "
+                "impulsive reaction se bachein, aur weekly progress review karein."
+            ),
+            (
+                f"बेहतर {domain_label} परिणामों के लिए संवाद स्पष्ट रखें, "
+                "आवेगपूर्ण प्रतिक्रिया से बचें और साप्ताहिक प्रगति की समीक्षा करें।"
+            ),
+        )
+
+    @staticmethod
+    def _action_plan_text(domain, domain_data, language, script, user_text):
+        risk_factor = domain_data.get("risk_factor") or "overthinking"
+        focus_line = str(user_text or "").strip()
+        if len(focus_line) > 120:
+            focus_line = focus_line[:120].rstrip() + "..."
+        if not focus_line:
+            focus_line = "current concern"
+
+        return ConsultationEngine._localized(
+            language,
+            script,
+            (
+                "Let's move practically.\n"
+                f"1) For the next 7 days, stay consistent on one priority linked to '{focus_line}'.\n"
+                f"2) Avoid decisions during high {risk_factor} moments; pause and reassess after a few hours.\n"
+                "3) On day 8, review what improved and what repeated.\n\n"
+                "If you want, I can now go deeper into timing or remedies for this exact concern."
+            ),
+            (
+                "Chaliye isse practical banate hain.\n"
+                f"1) Agle 7 din '{focus_line}' se judi ek hi priority par consistent rahiye.\n"
+                f"2) High {risk_factor} wale moments mein turant decision mat lijiye; kuch ghante rukkar reassess kijiye.\n"
+                "3) 8th din check kijiye kya improve hua aur kya repeat hua.\n\n"
+                "Agar chahen to ab main isi concern ka timing ya upay detail mein de sakta hoon."
+            ),
+            (
+                "इसे practical तरीके से आगे बढ़ाते हैं।\n"
+                f"1) अगले 7 दिन '{focus_line}' से जुड़ी एक ही priority पर लगातार काम करें।\n"
+                f"2) High {risk_factor} वाले समय में तुरंत निर्णय न लें; कुछ घंटे रुककर पुनः आकलन करें।\n"
+                "3) 8वें दिन देखें क्या बेहतर हुआ और क्या दोहराया गया।\n\n"
+                "यदि चाहें तो अब मैं इसी concern का timing या उपाय विस्तार से बता सकता हूँ।"
+            ),
         )
 
     @staticmethod
@@ -168,6 +259,83 @@ class ConsultationEngine:
             "Apna agla sawal share kijiye.",
             "अपना अगला सवाल साझा कीजिए।",
         )
+
+    @staticmethod
+    def _contains_any(text, words):
+        t = str(text or "").lower()
+        return any(w in t for w in words)
+
+    @staticmethod
+    def _direct_followup_response(domain, domain_data, language, script, user_text):
+        t = str(user_text or "").lower()
+        momentum = (domain_data.get("momentum") or "mixed").lower()
+        risk_factor = domain_data.get("risk_factor") or "impulsive decisions"
+        domain_label = ConsultationEngine._domain_label(domain, language, script)
+
+        if ConsultationEngine._contains_any(
+            t,
+            {"upay", "upaye", "upaay", "remedy", "remedies", "उपाय"},
+        ):
+            return ConsultationEngine._localized(
+                language,
+                script,
+                (
+                    f"For {domain_label}, start with these remedies: keep a fixed morning discipline, "
+                    f"avoid reactive decisions around {risk_factor}, and take one grounded action daily for 21 days."
+                ),
+                (
+                    f"{domain_label} ke liye pehle yeh upay follow kijiye: subah ka routine fixed rakhiye, "
+                    f"{risk_factor} ke time reactive decision mat lijiye, aur 21 din tak daily ek grounded action lijiye."
+                ),
+                (
+                    f"{domain_label} के लिए पहले ये उपाय अपनाएँ: सुबह की दिनचर्या स्थिर रखें, "
+                    f"{risk_factor} के समय आवेगपूर्ण निर्णय न लें, और 21 दिन तक रोज़ एक स्थिर कदम लें।"
+                ),
+            )
+
+        if ConsultationEngine._contains_any(
+            t,
+            {"kab", "when", "timing", "date", "समय", "कब"},
+        ):
+            return ConsultationEngine._localized(
+                language,
+                script,
+                (
+                    f"Timing-wise, momentum for {domain_label} is currently {momentum}. "
+                    "Next 6-12 weeks should be used for preparation and calibrated execution."
+                ),
+                (
+                    f"Timing ke hisaab se {domain_label} ka momentum abhi {momentum} hai. "
+                    "Agle 6-12 weeks preparation aur calibrated execution ke liye best rahenge."
+                ),
+                (
+                    f"Timing के अनुसार {domain_label} का momentum अभी {momentum} है। "
+                    "अगले 6-12 सप्ताह तैयारी और संतुलित execution के लिए उपयुक्त रहेंगे।"
+                ),
+            )
+
+        if ConsultationEngine._contains_any(
+            t,
+            {"aur", "more", "detail", "deep", "deeper", "zyada", "और"},
+        ):
+            return ConsultationEngine._localized(
+                language,
+                script,
+                (
+                    f"Going deeper: in {domain_label}, progress will come from consistency, not speed. "
+                    f"Your main leverage is disciplined execution while managing {risk_factor} patterns."
+                ),
+                (
+                    f"Aur depth mein dekhein to {domain_label} mein progress speed se nahi, consistency se aayegi. "
+                    f"Aapka sabse bada leverage disciplined execution hai, bas {risk_factor} pattern ko control mein rakhiye."
+                ),
+                (
+                    f"और गहराई से देखें तो {domain_label} में प्रगति गति से नहीं, निरंतरता से आएगी। "
+                    f"आपका सबसे बड़ा leverage disciplined execution है, बस {risk_factor} pattern को नियंत्रित रखें।"
+                ),
+            )
+
+        return None
 
     # --------------------------------------------------
 
@@ -250,6 +418,26 @@ class ConsultationEngine:
 
         memory = state["domain_memory"].setdefault(domain, {})
 
+        if stage in {
+            ConsultationEngine.DIAGNOSTIC,
+            ConsultationEngine.INTERPRETATION,
+            ConsultationEngine.GUIDANCE,
+            ConsultationEngine.ACTION_PLAN,
+        }:
+            direct_reply = ConsultationEngine._direct_followup_response(
+                domain=domain,
+                domain_data=domain_data or {},
+                language=language,
+                script=script,
+                user_text=user_text,
+            )
+            if direct_reply:
+                return {
+                    "text": direct_reply,
+                    "next_stage": ConsultationEngine.ACTION_PLAN,
+                    "state_blob": ConsultationEngine.dump_state(state),
+                }
+
         # ------------------------------------------
         # DOMAIN ENTRY
         # ------------------------------------------
@@ -316,7 +504,12 @@ class ConsultationEngine:
 
             memory["diagnostic"] = user_text
 
-            text = ConsultationEngine._diagnostic_stage_text(language, script)
+            text = ConsultationEngine._diagnostic_stage_text(
+                domain=domain,
+                domain_data=domain_data,
+                language=language,
+                script=script,
+            )
 
             return {
                 "text": text,
@@ -330,7 +523,12 @@ class ConsultationEngine:
 
         if stage == ConsultationEngine.INTERPRETATION:
 
-            text = ConsultationEngine._interpretation_stage_text(language, script)
+            text = ConsultationEngine._interpretation_stage_text(
+                domain=domain,
+                domain_data=domain_data,
+                language=language,
+                script=script,
+            )
 
             return {
                 "text": text,
@@ -344,8 +542,29 @@ class ConsultationEngine:
 
         if stage == ConsultationEngine.GUIDANCE:
 
-            text = ConsultationEngine._guidance_stage_text(language, script)
+            text = ConsultationEngine._guidance_stage_text(
+                domain=domain,
+                language=language,
+                script=script,
+            )
 
+            return {
+                "text": text,
+                "next_stage": ConsultationEngine.ACTION_PLAN,
+                "state_blob": ConsultationEngine.dump_state(state),
+            }
+
+        # ------------------------------------------
+
+        if stage == ConsultationEngine.ACTION_PLAN:
+            memory["last_action_focus"] = str(user_text or "").strip()
+            text = ConsultationEngine._action_plan_text(
+                domain=domain,
+                domain_data=domain_data,
+                language=language,
+                script=script,
+                user_text=user_text,
+            )
             return {
                 "text": text,
                 "next_stage": ConsultationEngine.ACTION_PLAN,

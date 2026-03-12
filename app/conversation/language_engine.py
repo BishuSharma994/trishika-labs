@@ -2,6 +2,8 @@ import json
 import re
 from typing import Any
 
+from app.conversation.profile_manager import ProfileManager
+
 
 class LanguageEngine:
 
@@ -71,7 +73,7 @@ class LanguageEngine:
         # Confirm prompt text shown after user picks a language
         confirm_texts = {
             LanguageEngine.ENGLISH:          "You are writing in English.\n\nContinue?",
-            LanguageEngine.HINDI_ROMAN:      "Aap Hindi Roman mein baat kar rahe hain.\n\nContinue?",
+            LanguageEngine.HINDI_ROMAN:      "Aap Hindi Roman mein baat kar rahe hain.\n\nJaari rakhein?",
             LanguageEngine.HINDI_DEVANAGARI: "\u0906\u092a \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u0932\u093f\u0916 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964\n\n\u091c\u093e\u0930\u0940 \u0930\u0916\u0947\u0902?",
         }
 
@@ -129,35 +131,53 @@ class LanguageEngine:
             else:
                 return None  # Unrecognised reply, let main flow handle it
 
-            script = "devanagari" if final_lang == LanguageEngine.HINDI_DEVANAGARI else "latin"
+            if final_lang == LanguageEngine.HINDI_DEVANAGARI:
+                script = "devanagari"
+            elif final_lang == LanguageEngine.HINDI_ROMAN:
+                script = "roman"
+            else:
+                script = "latin"
 
             confirmed_texts = {
                 LanguageEngine.ENGLISH: (
                     "Great! Let's continue in English.\n\n"
-                    "Please share your birth details:\n"
-                    "Example: 15-08-1990, 10:30 AM, Delhi"
+                    "Tell me whose chart you want to read."
                 ),
                 LanguageEngine.HINDI_ROMAN: (
                     "Achha! Hindi Roman mein baat karte hain.\n\n"
-                    "Apni janm details bhejiye:\n"
-                    "Example: 15-08-1990, 10:30 AM, Delhi"
+                    "Batayiye aap kiski kundli dekhna chahte hain."
                 ),
                 LanguageEngine.HINDI_DEVANAGARI: (
                     "\u0920\u0940\u0915 \u0939\u0948! \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u092c\u093e\u0924 \u0915\u0930\u0924\u0947 \u0939\u0948\u0902\u0964\n\n"
-                    "\u0905\u092a\u0928\u0940 \u091c\u0928\u094d\u092e \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u092d\u0947\u091c\u0947\u0902:\n"
-                    "\u0909\u0926\u093e\u0939\u0930\u0923: 15-08-1990, 10:30 AM, \u0926\u093f\u0932\u094d\u0932\u0940"
+                    "\u092c\u0924\u093e\u0907\u090f \u0906\u092a \u0915\u093f\u0938\u0915\u0940 \u0915\u0941\u0902\u0921\u0932\u0940 \u0926\u0947\u0916\u0928\u093e \u091a\u093e\u0939\u0924\u0947 \u0939\u0948\u0902\u0964"
                 ),
             }
+            pm_lang = (
+                "hi"
+                if final_lang in {LanguageEngine.HINDI_ROMAN, LanguageEngine.HINDI_DEVANAGARI}
+                else "en"
+            )
+            pm_script = (
+                "devanagari"
+                if final_lang == LanguageEngine.HINDI_DEVANAGARI
+                else "roman" if final_lang == LanguageEngine.HINDI_ROMAN else "latin"
+            )
+            declaration_prompt = ProfileManager.declaration_prompt(pm_lang, pm_script)
+            declaration_keyboard = ProfileManager.declaration_keyboard(pm_lang, pm_script)
 
             return {
                 "response": {
-                    "text": confirmed_texts[final_lang],
-                    "keyboard": {"remove_keyboard": True},
+                    "text": f"{confirmed_texts[final_lang]}\n\n{declaration_prompt}",
+                    "keyboard": {
+                        "keyboard": declaration_keyboard,
+                        "resize_keyboard": True,
+                        "one_time_keyboard": True,
+                    },
                 },
                 "language_mode": final_lang,
                 "language_confirmed": True,
                 "script": script,
-                "step": "birthdata",
+                "step": "profile_scope",
                 "state_blob": LanguageEngine.dump_state({"awaiting": False, "pending": None}),
             }
 

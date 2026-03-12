@@ -8,8 +8,14 @@ class DomainRouter:
             "career",
             "job",
             "naukri",
+            "rojgar",
             "profession",
             "promotion",
+            "business",
+            "startup",
+            "interview",
+            "company",
+            "salary",
             "work",
         ],
         "marriage": [
@@ -19,21 +25,50 @@ class DomainRouter:
             "wife",
             "husband",
             "spouse",
+            "rishta",
+            "relationship",
+            "partner",
+            "pyaar",
+            "love",
+            "jhagda",
+            "jagda",
+            "jhagra",
+            "jaghara",
+            "ladai",
+            "fight",
+            "conflict",
+            "divorce",
+            "separation",
+            "pati",
+            "patni",
         ],
         "finance": [
             "finance",
             "money",
             "paisa",
+            "vitt",
+            "arthik",
             "income",
             "wealth",
             "investment",
+            "loan",
+            "emi",
+            "debt",
+            "bachat",
+            "savings",
         ],
         "health": [
             "health",
             "sehat",
+            "swasthya",
             "fitness",
             "disease",
             "illness",
+            "stress",
+            "anxiety",
+            "sleep",
+            "diet",
+            "bimari",
         ],
         "relationship": [
             "relationship",
@@ -56,6 +91,12 @@ class DomainRouter:
         ],
     }
 
+    CORE_DOMAIN_MAP = {
+        "relationship": "marriage",
+        "family": "marriage",
+        "education": "career",
+    }
+
     @staticmethod
     def detect(text, current_domain=None):
 
@@ -75,6 +116,6 @@ class DomainRouter:
                         best_len = len(word)
 
         if best_domain:
-            return best_domain
+            return DomainRouter.CORE_DOMAIN_MAP.get(best_domain, best_domain)
 
-        return current_domain
+        return DomainRouter.CORE_DOMAIN_MAP.get(current_domain, current_domain)

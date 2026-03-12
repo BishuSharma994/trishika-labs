@@ -7,11 +7,17 @@ class ProfileManager:
 
     @staticmethod
     def _is_hi_dev(language, script):
-        return language == "hi" and script == "devanagari"
+        return (
+            language in {"hindi_devanagari", "hi_dev"}
+            or (language == "hi" and script == "devanagari")
+        )
 
     @staticmethod
     def _is_hi_rom(language, script):
-        return language == "hi" and script == "roman"
+        return (
+            language in {"hindi_roman", "hi_rom"}
+            or (language == "hi" and script in {"roman", "latin"})
+        )
 
     @staticmethod
     def parse_profiles(raw_profiles):
@@ -104,20 +110,30 @@ class ProfileManager:
     @staticmethod
     def declaration_prompt(language, script):
         if ProfileManager._is_hi_dev(language, script):
-            return "क्या यह आपकी कुंडली है या किसी family member की?"
+            return "क्या आप अपनी कुंडली देखना चाहते हैं या परिवार के किसी सदस्य की?"
 
         if ProfileManager._is_hi_rom(language, script):
-            return "Kya yeh aapki kundli hai ya kisi family member ki?"
+            return "Kya aap apni kundli dekhna chahte hain ya parivar ke kisi sadasya ki?"
 
         return "Is this your chart or a family member chart?"
 
     @staticmethod
-    def profile_name_prompt(language, script):
+    def declaration_keyboard(language, script):
         if ProfileManager._is_hi_dev(language, script):
-            return "किस family member के लिए पढ़ना है? कृपया नाम लिखें।"
+            return [["1 मेरी कुंडली"], ["2 परिवार सदस्य की कुंडली"]]
 
         if ProfileManager._is_hi_rom(language, script):
-            return "Kis family member ke liye reading chahiye? Kripya naam likhein."
+            return [["1 Meri Kundli"], ["2 Parivar Sadasya Ki Kundli"]]
+
+        return [["1 My Chart"], ["2 Family Member Chart"]]
+
+    @staticmethod
+    def profile_name_prompt(language, script):
+        if ProfileManager._is_hi_dev(language, script):
+            return "किस परिवार सदस्य के लिए पढ़ना है? कृपया नाम लिखें।"
+
+        if ProfileManager._is_hi_rom(language, script):
+            return "Kis parivar sadasya ke liye reading chahiye? Kripya naam likhiye."
 
         return "Which family member is this for? Please share their name."
 
@@ -134,12 +150,45 @@ class ProfileManager:
     @staticmethod
     def limit_message(language, script):
         if ProfileManager._is_hi_dev(language, script):
-            return "Aap family astrology plan mein 10 members tak add kar sakte hain."
+            return "आप इस प्रीमियम प्लान में अधिकतम 10 कुंडलियां जोड़ सकते हैं।"
 
         if ProfileManager._is_hi_rom(language, script):
-            return "Aap family astrology plan mein 10 members tak add kar sakte hain."
+            return "Aap is premium plan mein maximum 10 kundliyan add kar sakte hain."
 
         return "You can add up to 10 members in the family astrology plan."
+
+    @staticmethod
+    def upgrade_message(session, language, script):
+        if ProfileManager.is_premium(session):
+            if ProfileManager._is_hi_dev(language, script):
+                return (
+                    "आपने 10 प्रोफाइल की सीमा पूरी कर ली है। "
+                    "10 से अधिक कुंडलियों के लिए Higher Premium Tier में अपग्रेड करें।"
+                )
+            if ProfileManager._is_hi_rom(language, script):
+                return (
+                    "Aap 10 profiles ki limit tak pahunch gaye hain. "
+                    "10 se zyada kundliyon ke liye Higher Premium Tier mein upgrade karein."
+                )
+            return (
+                "You have reached the 10-profile limit. "
+                "Upgrade to a higher premium tier to add more charts."
+            )
+
+        if ProfileManager._is_hi_dev(language, script):
+            return (
+                "फ्री प्लान में केवल 1 प्रोफाइल उपलब्ध है। "
+                "10 कुंडलियों तक के लिए Premium Family Plan में अपग्रेड करें।"
+            )
+        if ProfileManager._is_hi_rom(language, script):
+            return (
+                "Free plan mein sirf 1 profile available hai. "
+                "10 kundliyon tak ke liye Premium Family Plan mein upgrade karein."
+            )
+        return (
+            "Free plan supports only 1 profile. "
+            "Upgrade to Premium Family to access up to 10 charts."
+        )
 
     @staticmethod
     def detect_profile_scope(text):
@@ -157,6 +206,12 @@ class ProfileManager:
             "मेरी",
             "मेरी कुंडली",
             "self chart",
+            "1",
+            "1 my chart",
+            "1 meri kundli",
+            "1 मेरी कुंडली",
+            "swayam",
+            "khud ki",
         }
 
         family_tokens = {
@@ -178,6 +233,12 @@ class ProfileManager:
             "पति",
             "bhai",
             "behen",
+            "2",
+            "2 family member chart",
+            "2 family member ki kundli",
+            "2 परिवार सदस्य की कुंडली",
+            "parivar",
+            "parivar sadasya",
         }
 
         if any(token in t for token in family_tokens):
