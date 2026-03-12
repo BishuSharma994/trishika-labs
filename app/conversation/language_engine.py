@@ -53,7 +53,9 @@ class LanguageEngine:
     @staticmethod
     def _detect_explicit_switch_request(text):
         t = str(text or "").strip().lower()
-        t_norm = re.sub(r"\s+", " ", t)
+        t_norm = re.sub(r"[^a-z0-9\u0900-\u097f\s]", " ", t)
+        t_norm = re.sub(r"\s+", " ", t_norm).strip()
+        tokens = set(t_norm.split())
 
         english_phrases = {
             "english",
@@ -65,6 +67,8 @@ class LanguageEngine:
             "english me",
             "english mein",
             "switch to english",
+            "can you tell me in english",
+            "tell me in english",
         }
         hindi_dev_phrases = {
             "hindi",
@@ -84,12 +88,27 @@ class LanguageEngine:
             "hindi roman mein",
             "switch to hindi roman",
         }
+        english_tokens = {"english", "englis", "englsh", "inglish"}
+        hindi_tokens = {"hindi", "हिंदी"}
+        roman_tokens = {"roman", "hinglish"}
 
-        if t_norm in english_phrases or re.search(r"(reply|speak|talk|switch).*(english)", t_norm):
+        if (
+            t_norm in english_phrases
+            or (tokens & english_tokens and (len(tokens) <= 3 or {"reply", "speak", "talk", "switch", "tell", "please"} & tokens))
+            or re.search(r"(reply|speak|talk|switch|tell).*(english|englis|inglish|englsh)", t_norm)
+        ):
             return LanguageEngine.ENGLISH
-        if t_norm in hindi_rom_phrases:
+        if (
+            t_norm in hindi_rom_phrases
+            or ("hindi" in tokens and tokens & roman_tokens)
+            or re.search(r"(switch|reply|talk|speak).*(hindi roman|roman hindi|hinglish)", t_norm)
+        ):
             return LanguageEngine.HINDI_ROMAN
-        if t_norm in hindi_dev_phrases or re.search(r"(reply|speak|talk|switch).*(hindi)", t_norm):
+        if (
+            t_norm in hindi_dev_phrases
+            or (tokens & hindi_tokens and len(tokens) <= 3)
+            or re.search(r"(reply|speak|talk|switch|tell).*(hindi)", t_norm)
+        ):
             return LanguageEngine.HINDI_DEVANAGARI
         return None
 
@@ -107,7 +126,20 @@ class LanguageEngine:
             if not requested_mode:
                 return None
             if requested_mode == mode:
-                return None
+                same_mode_text = {
+                    LanguageEngine.ENGLISH: "Already responding in English.",
+                    LanguageEngine.HINDI_ROMAN: "Main pehle se Hindi Roman mein jawab de raha hoon.",
+                    LanguageEngine.HINDI_DEVANAGARI: "मैं पहले से हिंदी में उत्तर दे रहा हूँ।",
+                }
+                return {
+                    "response": {
+                        "text": same_mode_text.get(mode, "Language already set."),
+                        "keyboard": {"remove_keyboard": True},
+                    },
+                    "language_mode": mode,
+                    "language_confirmed": True,
+                    "state_blob": LanguageEngine.dump_state({"awaiting": False, "pending": None}),
+                }
 
             script = "devanagari" if requested_mode == LanguageEngine.HINDI_DEVANAGARI else ("roman" if requested_mode == LanguageEngine.HINDI_ROMAN else "latin")
             switch_text = {

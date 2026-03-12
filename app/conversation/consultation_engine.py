@@ -1,6 +1,10 @@
 import json
+import logging
 import re
+from difflib import SequenceMatcher
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class ConsultationEngine:
@@ -11,6 +15,30 @@ class ConsultationEngine:
     INTERPRETATION = "INTERPRETATION"
     GUIDANCE = "GUIDANCE"
     ACTION_PLAN = "ACTION_PLAN"
+
+    INTENT_HIGH_CONFIDENCE = 0.84
+    INTENT_LOW_CONFIDENCE = 0.62
+
+    INTENT_KEYWORDS = {
+        "remedy": {
+            "upay", "upaye", "upaay", "upaaye", "upai", "upaiye", "upaie", "upchar", "totka",
+            "remedy", "remedies", "remady", "remeady", "remidey", "solution",
+            "उपाय", "उपायों", "उपचार",
+        },
+        "timing": {
+            "kab", "kabhi", "when", "timing", "time", "date", "samay", "kaisa timing",
+            "timeline", "window", "समय", "कब", "टाइमिंग",
+        },
+        "detail": {
+            "aur", "more", "detail", "details", "deep", "deeper", "zyada",
+            "explain", "elaborate", "और", "विस्तार",
+        },
+        "affirm": {
+            "yes", "haan", "han", "ha", "ji", "ok", "okay", "theek", "thik", "bilkul",
+            "yes please", "please give", "de dijiye", "de do", "bataiye", "bataye",
+            "haan ji", "जी", "हाँ",
+        },
+    }
 
     # --------------------------------------------------
 
@@ -290,31 +318,119 @@ class ConsultationEngine:
         return re.sub(r"\s+", " ", t).strip()
 
     @staticmethod
+    def _best_similarity_match(tokens, keywords):
+        best_score = 0.0
+        best_token = None
+        best_keyword = None
+        for token in tokens:
+            if len(token) < 3:
+                continue
+            for keyword in keywords:
+                if len(keyword) < 3:
+                    continue
+                score = SequenceMatcher(None, token, keyword).ratio()
+                if score > best_score:
+                    best_score = score
+                    best_token = token
+                    best_keyword = keyword
+        return best_score, best_token, best_keyword
+
+    @staticmethod
+    def _log_intent_event(domain, stage, text, intent, confidence, note, method=None, matched=None):
+        sample = ConsultationEngine._normalized_text(text)[:160]
+        logger.info(
+            "intent_telemetry domain=%s stage=%s intent=%s confidence=%.2f note=%s method=%s matched=%s text=%s",
+            domain,
+            stage,
+            intent,
+            confidence,
+            note,
+            method or "na",
+            matched or "na",
+            sample,
+        )
+
+    @staticmethod
+    def _is_question_like(text):
+        raw = str(text or "")
+        normalized = ConsultationEngine._normalized_text(text)
+        if "?" in raw:
+            return True
+        question_words = {
+            "kya", "kaise", "kab", "kyon", "kyu", "how", "what", "when", "why", "can", "please",
+            "बताइए", "कैसे", "कब", "क्या", "क्यों",
+        }
+        tokens = set(normalized.split())
+        return bool(tokens & question_words)
+
+    @staticmethod
+    def _intent_clarifier_text(language, script):
+        return ConsultationEngine._localized(
+            language,
+            script,
+            "To guide you precisely, reply with one choice: remedy, timing, or detail.",
+            "Sahi margdarshan ke liye ek vikalp likhiye: upay, timing, ya detail.",
+            "सटीक मार्गदर्शन के लिए एक विकल्प लिखें: उपाय, समय, या विस्तार।",
+        )
+
+    @staticmethod
     def _detect_followup_intent(user_text):
         t = ConsultationEngine._normalized_text(user_text)
+        base = {
+            "intent": None,
+            "confidence": 0.0,
+            "method": "none",
+            "candidate": None,
+            "matched": None,
+        }
         if not t:
-            return None
+            return base
 
-        remedy_tokens = {
-            "upay", "upaye", "upaay", "upaaye", "upai", "upaiye", "upaie",
-            "remedy", "remedies", "remady", "remeady", "remeady", "upchar", "उपाय",
-        }
-        timing_tokens = {"kab", "when", "timing", "time", "date", "samay", "कब", "समय"}
-        detail_tokens = {"aur", "more", "detail", "details", "deep", "deeper", "zyada", "और"}
-        affirm_tokens = {
-            "yes", "haan", "han", "ha", "ji", "ok", "okay", "theek", "thik", "bilkul",
-            "yes please", "please give", "de dijiye", "de do", "bataiye", "bataye",
-        }
+        tokens = t.split()
 
-        if any(token in t for token in remedy_tokens):
-            return "remedy"
-        if any(token in t for token in timing_tokens):
-            return "timing"
-        if any(token in t for token in detail_tokens):
-            return "detail"
-        if t in affirm_tokens or t.startswith("yes ") or t.startswith("haan "):
-            return "affirm"
-        return None
+        # Exact containment has top priority.
+        for intent in ("remedy", "timing", "detail", "affirm"):
+            keywords = ConsultationEngine.INTENT_KEYWORDS[intent]
+            if any((kw in t) for kw in keywords):
+                return {
+                    "intent": intent,
+                    "confidence": 0.99,
+                    "method": "exact",
+                    "candidate": intent,
+                    "matched": intent,
+                }
+
+        # Fuzzy fallback for spelling mistakes.
+        best_intent = None
+        best_score = 0.0
+        best_match = None
+        for intent in ("remedy", "timing", "detail", "affirm"):
+            score, token, keyword = ConsultationEngine._best_similarity_match(
+                tokens, ConsultationEngine.INTENT_KEYWORDS[intent]
+            )
+            if score > best_score:
+                best_score = score
+                best_intent = intent
+                best_match = f"{token}->{keyword}" if token and keyword else None
+
+        if best_intent and best_score >= ConsultationEngine.INTENT_HIGH_CONFIDENCE:
+            return {
+                "intent": best_intent,
+                "confidence": best_score,
+                "method": "fuzzy_high",
+                "candidate": best_intent,
+                "matched": best_match,
+            }
+        if best_intent and best_score >= ConsultationEngine.INTENT_LOW_CONFIDENCE:
+            return {
+                "intent": None,
+                "confidence": best_score,
+                "method": "fuzzy_low",
+                "candidate": best_intent,
+                "matched": best_match,
+            }
+
+        return base
 
     @staticmethod
     def _momentum_label(momentum, language, script):
@@ -468,7 +584,22 @@ class ConsultationEngine:
         state = ConsultationEngine.load_state(session_state_blob)
 
         memory = state["domain_memory"].setdefault(domain, {})
-        detected_intent = ConsultationEngine._detect_followup_intent(user_text)
+        intent_info = ConsultationEngine._detect_followup_intent(user_text)
+        detected_intent = intent_info["intent"]
+        intent_candidate = intent_info["candidate"]
+
+        if intent_info["method"] == "fuzzy_low":
+            ConsultationEngine._log_intent_event(
+                domain=domain,
+                stage=stage,
+                text=user_text,
+                intent=intent_candidate,
+                confidence=float(intent_info["confidence"]),
+                note="low_confidence_candidate",
+                method=intent_info.get("method"),
+                matched=intent_info.get("matched"),
+            )
+
         if detected_intent in {"remedy", "timing", "detail"}:
             memory["last_requested_intent"] = detected_intent
             memory["pending_intent"] = detected_intent
@@ -499,6 +630,29 @@ class ConsultationEngine:
                     "next_stage": ConsultationEngine.ACTION_PLAN,
                     "state_blob": ConsultationEngine.dump_state(state),
                 }
+
+        if (
+            stage in {ConsultationEngine.GUIDANCE, ConsultationEngine.ACTION_PLAN}
+            and detected_intent is None
+            and ConsultationEngine._is_question_like(user_text)
+        ):
+            if intent_candidate in {"remedy", "timing", "detail"}:
+                memory["pending_intent"] = intent_candidate
+            ConsultationEngine._log_intent_event(
+                domain=domain,
+                stage=stage,
+                text=user_text,
+                intent=intent_candidate or "unknown",
+                confidence=float(intent_info.get("confidence") or 0.0),
+                note="clarifier_prompted",
+                method=intent_info.get("method"),
+                matched=intent_info.get("matched"),
+            )
+            return {
+                "text": ConsultationEngine._intent_clarifier_text(language, script),
+                "next_stage": ConsultationEngine.ACTION_PLAN,
+                "state_blob": ConsultationEngine.dump_state(state),
+            }
 
         # ------------------------------------------
         # DOMAIN ENTRY
