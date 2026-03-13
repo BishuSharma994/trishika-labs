@@ -157,14 +157,12 @@ class FollowupRouter:
         stage,
         focus
     ):
-        base_prompt = AstrologerPrompts.build_domain_prompt(
-            domain=domain,
+        system_messages = AstrologerPrompts.build_system_messages(
             domain_data=domain_data,
             language=language,
             script=script,
-            user_id=user_id,
-            question=user_text
         )
+        base_prompt = "\n\n".join(msg.get("content", "") for msg in system_messages)
 
         return (
             f"{base_prompt}\n\n"

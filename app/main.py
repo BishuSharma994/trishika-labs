@@ -71,7 +71,10 @@ async def telegram_webhook(bot_token: str, request: Request):
     elif bot_token == INTERVIEW_TOKEN:
 
         reply_text = ask_ai(
-            """Evaluate candidate answer.
+            [
+                {
+                    "role": "system",
+                    "content": """Evaluate candidate answer.
 
 Score 0-10
 Breakdown
@@ -79,7 +82,12 @@ Strengths
 Weaknesses
 Improved Answer
 """,
-            text
+                },
+                {
+                    "role": "user",
+                    "content": text,
+                },
+            ]
         )
 
     else:
@@ -101,7 +109,8 @@ Improved Answer
 
     requests.post(
         f"https://api.telegram.org/bot{bot_token}/sendMessage",
-        json=payload
+        json=payload,
+        timeout=15,
     )
 
     return {"ok": True}

@@ -1,4 +1,5 @@
 from collections import deque
+import re
 
 
 class MemoryEngine:
@@ -7,7 +8,7 @@ class MemoryEngine:
     Allows the bot to reference previous discussion.
     """
 
-    MAX_HISTORY = 10
+    MAX_HISTORY = 24
 
     memory = {}
 
@@ -57,6 +58,56 @@ class MemoryEngine:
                 lines.append(f"Astrologer: {msg['content']}")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def build_context_brief(user_id, max_items=6):
+
+        history = list(MemoryEngine.get_history(user_id))
+        if not history:
+            return ""
+
+        concise = []
+        skip_exact = {
+            "/start",
+            "english",
+            "hindi (roman)",
+            "हिंदी",
+            "1 haan",
+            "1 yes",
+            "1 मेरी कुंडली",
+            "1 meri kundli",
+            "1 my chart",
+            "career",
+            "finance",
+            "health",
+            "shaadi",
+            "marriage",
+            "job switch",
+            "stress",
+        }
+
+        for msg in reversed(history):
+            role = msg.get("role")
+            content = " ".join(str(msg.get("content") or "").strip().split())
+            lowered = content.lower()
+            if not content:
+                continue
+
+            if role == "user":
+                if lowered in skip_exact:
+                    continue
+                if len(re.findall(r"\w+", lowered)) <= 2 and not content.endswith("?"):
+                    continue
+                concise.append(f"User concern: {content}")
+            else:
+                if len(re.findall(r"\w+", lowered)) < 5:
+                    continue
+                concise.append(f"Astrologer replied: {content}")
+
+            if len(concise) >= max_items:
+                break
+
+        return "\n".join(reversed(concise))
 
     @staticmethod
     def clear(user_id):

@@ -6,29 +6,32 @@ load_dotenv()
 
 AI_KEY = os.getenv("AI_API_KEY")
 
-def ask_ai(system_prompt, user_text):
+
+def ask_ai(messages_array):
     headers = {
         "Authorization": f"Bearer {AI_KEY}",
         "Content-Type": "application/json"
     }
 
     data = {
-        "model": "gpt-4.1-mini",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_text}
-        ]
+        "model": "gpt-4o-mini",
+        "temperature": 0.2,
+        "presence_penalty": 0.1,
+        "messages": messages_array
     }
 
-    r = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=data
-    )
+    try:
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=15
+        )
+        response_json = r.json()
 
-    response_json = r.json()
+        if "choices" not in response_json:
+            return "Maaf kijiye, abhi server mein thodi samasya hai. Kripya thodi der baad prayas karein."
 
-    if "choices" not in response_json:
-        return f"AI Error: {response_json}"
-
-    return response_json["choices"][0]["message"]["content"]
+        return response_json["choices"][0]["message"]["content"]
+    except Exception:
+        return "Maaf kijiye, connection error. Kripya dobara likhein."

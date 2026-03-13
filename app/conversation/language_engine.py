@@ -167,9 +167,9 @@ class LanguageEngine:
 
         # Confirm prompt text shown after user picks a language
         confirm_texts = {
-            LanguageEngine.ENGLISH:          "You are writing in English.\n\nContinue?",
-            LanguageEngine.HINDI_ROMAN:      "Aap Hindi Roman mein baat kar rahe hain.\n\nJaari rakhein?",
-            LanguageEngine.HINDI_DEVANAGARI: "\u0906\u092a \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u0932\u093f\u0916 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964\n\n\u091c\u093e\u0930\u0940 \u0930\u0916\u0947\u0902?",
+            LanguageEngine.ENGLISH:          "We will continue in English.\n\nShall we proceed?",
+            LanguageEngine.HINDI_ROMAN:      "Hum Hindi Roman mein baat karenge.\n\nAage badhein?",
+            LanguageEngine.HINDI_DEVANAGARI: "\u0939\u092e \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u092c\u093e\u0924 \u0915\u0930\u0947\u0902\u0917\u0947\u0964\n\n\u0906\u0917\u0947 \u092c\u0922\u093c\u0947\u0902?",
         }
 
         # Confirm keyboards language-aware
@@ -235,16 +235,13 @@ class LanguageEngine:
 
             confirmed_texts = {
                 LanguageEngine.ENGLISH: (
-                    "Great! Let's continue in English.\n\n"
-                    "Tell me whose chart you want to read."
+                    "Alright, we'll continue in English."
                 ),
                 LanguageEngine.HINDI_ROMAN: (
-                    "Achha! Hindi Roman mein baat karte hain.\n\n"
-                    "Batayiye aap kiski kundli dekhna chahte hain."
+                    "Theek hai, Hindi Roman mein hi baat karte hain."
                 ),
                 LanguageEngine.HINDI_DEVANAGARI: (
-                    "\u0920\u0940\u0915 \u0939\u0948! \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u092c\u093e\u0924 \u0915\u0930\u0924\u0947 \u0939\u0948\u0902\u0964\n\n"
-                    "\u092c\u0924\u093e\u0907\u090f \u0906\u092a \u0915\u093f\u0938\u0915\u0940 \u0915\u0941\u0902\u0921\u0932\u0940 \u0926\u0947\u0916\u0928\u093e \u091a\u093e\u0939\u0924\u0947 \u0939\u0948\u0902\u0964"
+                    "\u0920\u0940\u0915 \u0939\u0948, \u0939\u092e \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u0939\u0940 \u092c\u093e\u0924 \u0915\u0930\u0947\u0902\u0917\u0947\u0964"
                 ),
             }
             pm_lang = (

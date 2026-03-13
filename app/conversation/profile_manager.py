@@ -110,12 +110,12 @@ class ProfileManager:
     @staticmethod
     def declaration_prompt(language, script):
         if ProfileManager._is_hi_dev(language, script):
-            return "क्या आप अपनी कुंडली देखना चाहते हैं या परिवार के किसी सदस्य की?"
+            return "मैं किसकी कुंडली देखूँ - आपकी या परिवार के किसी सदस्य की?"
 
         if ProfileManager._is_hi_rom(language, script):
-            return "Kya aap apni kundli dekhna chahte hain ya parivar ke kisi sadasya ki?"
+            return "Main kiski kundli dekhun - aapki ya parivar ke kisi sadasya ki?"
 
-        return "Is this your chart or a family member chart?"
+        return "Whose chart should I read: yours or a family member's?"
 
     @staticmethod
     def declaration_keyboard(language, script):
@@ -130,12 +130,12 @@ class ProfileManager:
     @staticmethod
     def profile_name_prompt(language, script):
         if ProfileManager._is_hi_dev(language, script):
-            return "किस परिवार सदस्य के लिए पढ़ना है? कृपया नाम लिखें।"
+            return "कृपया उस परिवार सदस्य का नाम भेजें।"
 
         if ProfileManager._is_hi_rom(language, script):
-            return "Kis parivar sadasya ke liye reading chahiye? Kripya naam likhiye."
+            return "Kripya us parivar sadasya ka naam bhejiye."
 
-        return "Which family member is this for? Please share their name."
+        return "Please share the family member's name."
 
     @staticmethod
     def default_profile_name(language, script):
