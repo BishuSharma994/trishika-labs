@@ -19,6 +19,7 @@ class Session(Base):
     dob                      = Column(String)
     tob                      = Column(String)
     place                    = Column(String)
+    gender                   = Column(String)
     language                 = Column(String)
     script                   = Column(String)
     language_mode            = Column(String)
@@ -66,6 +67,7 @@ def _ensure_schema_updates():
             ("language_confirmed",       "ALTER TABLE sessions ADD COLUMN language_confirmed BOOLEAN DEFAULT 0"),
             ("language_state_blob",      "ALTER TABLE sessions ADD COLUMN language_state_blob TEXT"),      # ← ADDED
             ("consultation_state_blob",  "ALTER TABLE sessions ADD COLUMN consultation_state_blob TEXT"),  # ← ADDED
+            ("gender",                   "ALTER TABLE sessions ADD COLUMN gender VARCHAR"),
         ]
 
         for col_name, sql in migrations:

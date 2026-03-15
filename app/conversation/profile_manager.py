@@ -42,6 +42,7 @@ class ProfileManager:
             dob = str(item.get("dob", "")).strip()
             tob = str(item.get("tob", "")).strip()
             place = str(item.get("place", "")).strip()
+            gender = str(item.get("gender", "")).strip()
 
             if not name:
                 continue
@@ -52,6 +53,7 @@ class ProfileManager:
                     "dob": dob,
                     "tob": tob,
                     "place": place,
+                    "gender": gender,
                 }
             )
 
@@ -82,14 +84,18 @@ class ProfileManager:
             return profiles, False, False
 
         normalized_name = name.lower()
+        incoming_gender = str(profile.get("gender", "")).strip()
 
         for idx, existing in enumerate(profiles):
             if str(existing.get("name", "")).strip().lower() == normalized_name:
+                existing_gender = str(existing.get("gender", "")).strip()
+                resolved_gender = incoming_gender or existing_gender
                 profiles[idx] = {
                     "name": name,
                     "dob": str(profile.get("dob", "")).strip(),
                     "tob": str(profile.get("tob", "")).strip(),
                     "place": str(profile.get("place", "")).strip(),
+                    "gender": resolved_gender,
                 }
                 return profiles, True, False
 
@@ -102,6 +108,7 @@ class ProfileManager:
                 "dob": str(profile.get("dob", "")).strip(),
                 "tob": str(profile.get("tob", "")).strip(),
                 "place": str(profile.get("place", "")).strip(),
+                "gender": incoming_gender,
             }
         )
 

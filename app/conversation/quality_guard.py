@@ -141,8 +141,9 @@ class ConversationQualityGuard:
     @staticmethod
     def _has_timing_window(reply):
         lowered = str(reply or "").lower()
-        if any(marker in lowered for marker in ConversationQualityGuard.TIMING_MARKERS):
-            return True
+        for marker in ConversationQualityGuard.TIMING_MARKERS:
+            if re.search(rf"\b{re.escape(marker)}\b", lowered):
+                return True
         return bool(re.search(r"\b\d+\s*[-–]?\s*\d*\s*(week|weeks|month|months|day|days|haft|mahine|din)\b", lowered))
 
     @staticmethod
@@ -260,6 +261,22 @@ class ConversationQualityGuard:
         return text.strip()
 
     @staticmethod
+    def _strip_trailing_question_for_timing(reply, user_text):
+        if not reply or not ConversationQualityGuard._asks_for_timing(user_text):
+            return reply
+
+        sentences = re.split(r"(?<=[.!?।])\s+", str(reply).strip())
+        if len(sentences) <= 1:
+            return reply
+
+        last = sentences[-1].strip()
+        if last.endswith("?") or "?" in last:
+            trimmed = " ".join(sentence for sentence in sentences[:-1] if sentence.strip()).strip()
+            return trimmed or reply
+
+        return reply
+
+    @staticmethod
     def maybe_rewrite(user_text, draft_reply, language, script, topic=None, selection_only=False):
         cleaned = ConversationQualityGuard.sanitize(draft_reply)
         score, issues = ConversationQualityGuard.score_reply(
@@ -270,7 +287,8 @@ class ConversationQualityGuard:
             selection_only=selection_only,
         )
 
-        if score >= 9.7:
+        if score >= 9.5:
+            cleaned = ConversationQualityGuard._strip_trailing_question_for_timing(cleaned, user_text)
             return cleaned, score, issues
 
         current_reply = cleaned
@@ -322,7 +340,8 @@ class ConversationQualityGuard:
                 current_score = rewritten_score
                 current_issues = rewritten_issues
 
-            if current_score >= 9.85:
+            if current_score >= 9.5:
                 break
 
+        current_reply = ConversationQualityGuard._strip_trailing_question_for_timing(current_reply, user_text)
         return current_reply, current_score, current_issues
