@@ -18,9 +18,10 @@ class DialogEngine:
 
     @staticmethod
     def load_chart(user_id, session):
-        dob   = session.dob
-        tob   = session.tob
-        place = session.place
+        # Fallback values agar data missing ho
+        dob   = getattr(session, "dob", "01/01/2000")
+        tob   = getattr(session, "tob", "12:00 PM")
+        place = getattr(session, "place", "New Delhi")
 
         if session.chart_data:
             try:
@@ -28,10 +29,18 @@ class DialogEngine:
             except Exception:
                 pass
 
-        lat, lon = resolve_coordinates(place)
-        chart = ParashariEngine.generate_chart(dob, tob, lat, lon)
-        StateManager.update_session(user_id, chart_data=json.dumps(chart))
-        return chart
+        # Error Handling for Location API Crash (Choti jagah ke liye)
+        try:
+            lat, lon = resolve_coordinates(place)
+        except Exception:
+            lat, lon = 28.6139, 77.2090 # Default Delhi agar gaon/shahar map par na mile
+
+        try:
+            chart = ParashariEngine.generate_chart(dob, tob, lat, lon)
+            StateManager.update_session(user_id, chart_data=json.dumps(chart))
+            return chart
+        except Exception:
+            return {}
 
     @staticmethod
     def process(user_id, text, session=None):
@@ -94,7 +103,7 @@ class DialogEngine:
         # 3. INITIAL TOPIC -> NAME COLLECTION
         # --------------------------------------------------------------
         if session.step == "initial_topic":
-            StateManager.update_session(user_id, step="name", last_domain=text)
+            StateManager.update_session(user_id, step="name", last_domain=text) # Yahan domain save ho gaya (e.g. Marriage)
             
             if lang == LanguageEngine.HINDI_ROMAN:
                 reply_text = "Aap ko iski jankari denay k liye mujey app ka details chaiye.\n\nKripya apna Naam bataiye 👇"
@@ -149,7 +158,7 @@ class DialogEngine:
             return {"text": reply_text}
 
         # --------------------------------------------------------------
-        # 8. PLACE -> CHART GENERATION & WELCOME SUMMARY
+        # 8. PLACE -> CHART GENERATION & WELCOME SUMMARY (Dynamic Keyboard)
         # --------------------------------------------------------------
         if session.step == "place":
             StateManager.update_session(user_id, step="question", place=text)
@@ -158,12 +167,26 @@ class DialogEngine:
             session.tob = getattr(session, "tob", "12:00 PM")
             name = getattr(session, "active_profile_name", "User")
             
-            try:
-                chart = DialogEngine.load_chart(user_id, session)
-            except Exception as e:
-                pass 
-                
+            domain_selected = str(getattr(session, "last_domain", "")).lower()
+            
+            # MEMORY CLEAR: Taaki AI ko purane onboarding messages na dikhe aur context crash na ho
+            MemoryEngine.clear(user_id)
+            
+            chart = DialogEngine.load_chart(user_id, session)
+            
+            # DYNAMIC SUGGESTIONS LOGIC
             if lang == LanguageEngine.HINDI_ROMAN:
+                if "marriage" in domain_selected or "shaadi" in domain_selected:
+                    suggestions = [["Meri shaadi kab hogi?"], ["Life partner kaisa hoga?"]]
+                elif "career" in domain_selected:
+                    suggestions = [["Aagey opportunities kab milenge?"], ["Job switch ka sahi samay kya hai?"]]
+                elif "finance" in domain_selected:
+                    suggestions = [["Dhan prapti ke yog hain?"], ["Paisa kab bachega?"]]
+                elif "health" in domain_selected:
+                    suggestions = [["Health aagey kaisi rahegi?"], ["Koi health issue toh nahi aayega?"]]
+                else:
+                    suggestions = [["Aane wala samay kaisa rahega?"], ["Mera sabse majboot grah kaun sa hai?"]]
+                
                 reply_text = f"""Kundali ban rahi hai... ⏳
 
 My Details:
@@ -176,8 +199,19 @@ Namaste {name} ji main Hemant hoon aapka AI astrologer.
 Aaj kaise hain aap?
 
 Aaj kis bare mein baat karna chahenge?"""
-                suggestions = [["Aagey opportunities kab milenge?"], ["Dhan prapti ke yog hain?"]]
-            else:
+
+            else: # ENGLISH
+                if "marriage" in domain_selected or "shaadi" in domain_selected:
+                    suggestions = [["When will I get married?"], ["How will my life partner be?"]]
+                elif "career" in domain_selected:
+                    suggestions = [["When will I get new opportunities?"], ["When is the right time to switch jobs?"]]
+                elif "finance" in domain_selected:
+                    suggestions = [["Are there chances of wealth gain?"], ["How to improve my savings?"]]
+                elif "health" in domain_selected:
+                    suggestions = [["How will my health be?"], ["Are there any health precautions?"]]
+                else:
+                    suggestions = [["How will my upcoming time be?"], ["Which is my strongest planet?"]]
+                
                 reply_text = f"""Generating Kundali... ⏳
 
 My Details:
@@ -190,7 +224,6 @@ Namaste {name} ji, I am Rohan, your AI astrologer.
 How are you today?
 
 What would you like to discuss today?"""
-                suggestions = [["When will I get new opportunities?"], ["Are there chances of wealth gain?"]]
                 
             return {
                 "text": reply_text,
@@ -202,7 +235,7 @@ What would you like to discuss today?"""
             }
 
         # --------------------------------------------------------------
-        # 9. MAIN CONSULTATION (With Strict Language Lock)
+        # 9. MAIN CONSULTATION (With Strict Language Lock & Safety Nets)
         # --------------------------------------------------------------
         if session.step == "question":
             
@@ -222,40 +255,52 @@ What would you like to discuss today?"""
                 }
 
             # If language check passes, proceed to LLM
-            from app.ai import ask_ai
-            from app.conversation.prompt_builder import AstrologerPrompts
-            from app.conversation.planet_translator import PlanetTranslator
-            
-            consultation_state = ConsultationEngine.load_state(getattr(session, "consultation_state_blob", None))
-            active_topic = consultation_state.get("topic") or getattr(session, "last_domain", None)
-            domain = IntentRouter.detect_domain(text, current_domain=active_topic)
-            
-            chart = DialogEngine.load_chart(user_id, session)
-            score_domain = ConsultationEngine.score_domain(domain or active_topic)
-            
-            domain_data = {}
-            if score_domain:
-                domain_data = dict(chart.get("domain_scores", {}).get(score_domain, {}))
-            
-            if "current_dasha" in chart:
-                domain_data["current_dasha"] = chart["current_dasha"]
+            try:
+                from app.ai import ask_ai
+                from app.conversation.prompt_builder import AstrologerPrompts
+                from app.conversation.planet_translator import PlanetTranslator
+                
+                consultation_state = ConsultationEngine.load_state(getattr(session, "consultation_state_blob", None))
+                active_topic = consultation_state.get("topic") or getattr(session, "last_domain", None)
+                domain = IntentRouter.detect_domain(text, current_domain=active_topic)
+                
+                chart = DialogEngine.load_chart(user_id, session) or {}
+                score_domain = ConsultationEngine.score_domain(domain or active_topic)
+                
+                domain_data = {}
+                if score_domain:
+                    domain_data = dict(chart.get("domain_scores", {}).get(score_domain, {}))
+                
+                if "current_dasha" in chart:
+                    domain_data["current_dasha"] = chart["current_dasha"]
 
-            messages = AstrologerPrompts.build_system_messages(domain_data, lang, script)
+                messages = AstrologerPrompts.build_system_messages(domain_data, lang, script)
 
-            history = MemoryEngine.get_history(user_id)
-            for msg in history:
-                messages.append(msg)
+                history = MemoryEngine.get_history(user_id)
+                for msg in history:
+                    messages.append(msg)
 
-            ai_reply = ask_ai(messages)
-            ai_reply = PlanetTranslator.translate(ai_reply, lang, script)
+                ai_reply = ask_ai(messages)
+                
+                try:
+                    ai_reply = PlanetTranslator.translate(ai_reply, lang, script)
+                except Exception:
+                    pass
 
-            StateManager.update_session(user_id, last_domain=(domain or active_topic))
-            MemoryEngine.add_bot_message(user_id, ai_reply)
+                StateManager.update_session(user_id, last_domain=(domain or active_topic))
+                MemoryEngine.add_bot_message(user_id, ai_reply)
 
-            return {
-                "text": ai_reply,
-                "keyboard": {"remove_keyboard": True},
-            }
+                return {
+                    "text": ai_reply,
+                    "keyboard": {"remove_keyboard": True},
+                }
+                
+            except Exception as e:
+                fallback_msg = "Maaf kijiye, system mein thodi takneeki samasya aa rahi hai. Kripya apna sawal dobara puchen." if lang == LanguageEngine.HINDI_ROMAN else "I apologize, there is a technical glitch. Please ask your question again."
+                return {
+                    "text": fallback_msg,
+                    "keyboard": {"remove_keyboard": True}
+                }
 
         return {
             "text": "Type /start to begin.",
