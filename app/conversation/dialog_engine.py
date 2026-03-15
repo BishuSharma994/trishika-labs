@@ -50,7 +50,7 @@ class DialogEngine:
             )
             MemoryEngine.clear(user_id)
             return {
-                "text": "Welcome to Trishivara! ✨\nYou can chat with our expert Astrologers, for accurate guidance, all your chat are completely secure and private.\n\nAap hamare expert Astrologers se call aur chat kar sakte ho, accurate guidance ke liye, aur aapki saari chats bilkul secure aur private hain.\n\nWhich language would you like to chat in?\nAap kis language mein chat karna chahenge?",
+                "text": "Welcome to Trishivara! ✨\nYou can chat with our expert Astrologers, for accurate guidance, all your chat are completely secure and private.\n\nAap hamare expert Astrologers se aap chat kar sakte ho, accurate guidance ke liye, aur aapki saari chats bilkul secure aur private hain.\n\nWhich language would you like to chat in?\nAap kis language mein chat karna chahenge?",
                 "keyboard": {
                     "keyboard": [
                         ["English - I'd prefer to chat in English"],
