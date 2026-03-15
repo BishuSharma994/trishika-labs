@@ -6,7 +6,6 @@ load_dotenv()
 
 AI_KEY = os.getenv("AI_API_KEY")
 
-
 def ask_ai(messages_array):
     headers = {
         "Authorization": f"Bearer {AI_KEY}",
@@ -33,5 +32,5 @@ def ask_ai(messages_array):
             return "Maaf kijiye, abhi server mein thodi samasya hai. Kripya thodi der baad prayas karein."
 
         return response_json["choices"][0]["message"]["content"]
-    except Exception:
+    except Exception as e:
         return "Maaf kijiye, connection error. Kripya dobara likhein."
