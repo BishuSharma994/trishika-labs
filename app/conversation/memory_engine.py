@@ -1,115 +1,89 @@
+import os
+import json
 from collections import deque
 import re
 
-
 class MemoryEngine:
     """
-    Stores recent conversation context for each user.
-    Allows the bot to reference previous discussion.
+    Persistent memory engine storing user session state and chat history.
+    Stores data in JSON files to survive server restarts.
     """
-
     MAX_HISTORY = 24
+    MEMORY_DIR = "memory/users"
 
-    memory = {}
+    @classmethod
+    def _ensure_dir(cls):
+        if not os.path.exists(cls.MEMORY_DIR):
+            os.makedirs(cls.MEMORY_DIR)
+
+    @classmethod
+    def _get_filepath(cls, user_id):
+        cls._ensure_dir()
+        return os.path.join(cls.MEMORY_DIR, f"{user_id}.json")
+
+    @classmethod
+    def _load(cls, user_id):
+        filepath = cls._get_filepath(user_id)
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                try:
+                    return json.load(f)
+                except json.JSONDecodeError:
+                    pass
+        return {
+            "name": None,
+            "birth_details_saved": False,
+            "topics_discussed": [],
+            "history": []
+        }
+
+    @classmethod
+    def _save(cls, user_id, data):
+        with open(cls._get_filepath(user_id), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
 
     @staticmethod
     def get_history(user_id):
-
-        if user_id not in MemoryEngine.memory:
-            MemoryEngine.memory[user_id] = deque(maxlen=MemoryEngine.MAX_HISTORY)
-
-        return MemoryEngine.memory[user_id]
+        data = MemoryEngine._load(user_id)
+        return data.get("history", [])
 
     @staticmethod
     def add_user_message(user_id, message):
-
-        history = MemoryEngine.get_history(user_id)
-
-        history.append({
-            "role": "user",
-            "content": message
-        })
+        data = MemoryEngine._load(user_id)
+        history = data.get("history", [])
+        history.append({"role": "user", "content": message})
+        
+        # Enforce max history
+        if len(history) > MemoryEngine.MAX_HISTORY:
+            history = history[-MemoryEngine.MAX_HISTORY:]
+            
+        data["history"] = history
+        MemoryEngine._save(user_id, data)
 
     @staticmethod
     def add_bot_message(user_id, message):
-
-        history = MemoryEngine.get_history(user_id)
-
-        history.append({
-            "role": "assistant",
-            "content": message
-        })
-
-    @staticmethod
-    def build_context(user_id):
-
-        history = MemoryEngine.get_history(user_id)
-
-        if not history:
-            return ""
-
-        lines = []
-
-        for msg in history:
-
-            if msg["role"] == "user":
-                lines.append(f"User: {msg['content']}")
-            else:
-                lines.append(f"Astrologer: {msg['content']}")
-
-        return "\n".join(lines)
+        data = MemoryEngine._load(user_id)
+        history = data.get("history", [])
+        history.append({"role": "assistant", "content": message})
+        
+        if len(history) > MemoryEngine.MAX_HISTORY:
+            history = history[-MemoryEngine.MAX_HISTORY:]
+            
+        data["history"] = history
+        MemoryEngine._save(user_id, data)
 
     @staticmethod
-    def build_context_brief(user_id, max_items=6):
-
-        history = list(MemoryEngine.get_history(user_id))
-        if not history:
-            return ""
-
-        concise = []
-        skip_exact = {
-            "/start",
-            "english",
-            "hindi (roman)",
-            "हिंदी",
-            "1 haan",
-            "1 yes",
-            "1 मेरी कुंडली",
-            "1 meri kundli",
-            "1 my chart",
-            "career",
-            "finance",
-            "health",
-            "shaadi",
-            "marriage",
-            "job switch",
-            "stress",
-        }
-
-        for msg in reversed(history):
-            role = msg.get("role")
-            content = " ".join(str(msg.get("content") or "").strip().split())
-            lowered = content.lower()
-            if not content:
-                continue
-
-            if role == "user":
-                if lowered in skip_exact:
-                    continue
-                if len(re.findall(r"\w+", lowered)) <= 2 and not content.endswith("?"):
-                    continue
-                concise.append(f"User concern: {content}")
-            else:
-                if len(re.findall(r"\w+", lowered)) < 5:
-                    continue
-                concise.append(f"Astrologer replied: {content}")
-
-            if len(concise) >= max_items:
-                break
-
-        return "\n".join(reversed(concise))
+    def log_topic(user_id, topic):
+        if not topic: return
+        data = MemoryEngine._load(user_id)
+        topics = data.get("topics_discussed", [])
+        if topic not in topics:
+            topics.append(topic)
+            data["topics_discussed"] = topics
+            MemoryEngine._save(user_id, data)
 
     @staticmethod
     def clear(user_id):
-
-        MemoryEngine.memory[user_id] = deque(maxlen=MemoryEngine.MAX_HISTORY)
+        data = MemoryEngine._load(user_id)
+        data["history"] = []
+        MemoryEngine._save(user_id, data)

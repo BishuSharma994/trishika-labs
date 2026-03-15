@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time  # Imported for the human-like typing delay
 
 import requests
 from dotenv import load_dotenv
@@ -98,19 +99,38 @@ Improved Answer
     if not reply_text:
         reply_text = "Please try again."
 
-    payload = {
-        "chat_id": chat_id,
-        "text": reply_text
-    }
+    # Split the response into separate bubbles based on double newlines
+    message_bubbles = reply_text.split("\n\n")
 
-    # Telegram keyboards must be JSON encoded
-    if reply_keyboard:
-        payload["reply_markup"] = json.dumps(reply_keyboard)
+    # Loop through each bubble and send them individually
+    for index, bubble in enumerate(message_bubbles):
+        bubble = bubble.strip()
 
-    requests.post(
-        f"https://api.telegram.org/bot{bot_token}/sendMessage",
-        json=payload,
-        timeout=15,
-    )
+        if not bubble:
+            continue  # Skip empty lines
+
+        payload = {
+            "chat_id": chat_id,
+            "text": bubble
+        }
+
+        # Attach the keyboard ONLY to the very last bubble
+        if index == len(message_bubbles) - 1 and reply_keyboard:
+            payload["reply_markup"] = reply_keyboard
+
+        # Send the individual bubble to Telegram
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json=payload,
+                timeout=15,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send message chunk: {e}")
+
+        # Add a 1.5-second delay before sending the next bubble, 
+        # but don't delay after the very last bubble
+        if index < len(message_bubbles) - 1:
+            time.sleep(1.5)
 
     return {"ok": True}
