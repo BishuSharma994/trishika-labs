@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 
 from app.conversation.intent_router import IntentRouter
 from app.conversation.life_translation_engine import translate_to_life_guidance
@@ -18,7 +19,9 @@ class ConsultationEngine:
 
     INTENT_STAGE_MAP = {
         "definition": 2,
+        "clarification": 2,
         "detail": 2,
+        "context_update": 2,
         "timing": 3,
         "instruction": 4,
         "remedy": 5,
@@ -50,6 +53,8 @@ class ConsultationEngine:
     }
 
     KNOWN_PLANETS = {"Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"}
+    TIMEFRAME_HINTS = ("day", "days", "week", "weeks", "month", "months", "hafta", "hafte", "mahina", "mahine")
+    TEMPLATE_LABELS = ("observation:", "cause:", "action:", "timeframe:")
 
     PLANET_DEFINITIONS = {
         "Sun": {
@@ -144,64 +149,120 @@ class ConsultationEngine:
         },
     }
 
-    DETAIL_LINES = {
+    OUTCOME_LINES = {
         "career": {
             "en": [
-                "In career, this affects work decisions, consistency, and progress.",
-                "In career, this shows up through workload, discipline, and job direction.",
+                "This improves consistency at work, reduces avoidable mistakes, and makes progress easier to track.",
+                "This brings clearer work priorities, steadier output, and better control over delays.",
             ],
             "hi": [
-                "Career mein yeh work decisions, consistency aur progress ko affect karta hai.",
-                "Career mein yeh workload, discipline aur job direction par dikhta hai.",
+                "Isse kaam mein consistency badhegi, avoidable mistakes kam hongi, aur progress track karna aasaan hoga.",
+                "Isse work priorities clear hongi, output steady hoga, aur delays par zyada control aayega.",
             ],
         },
         "finance": {
             "en": [
-                "In finance, this shows up through spending, savings, and budget control.",
-                "In finance, this affects purchases, savings discipline, and money decisions.",
+                "This improves spending control, protects savings, and reduces regret purchases.",
+                "This brings steadier budgeting, better savings discipline, and fewer money leaks.",
             ],
             "hi": [
-                "Finance mein yeh spending, savings aur budget control par dikhta hai.",
-                "Finance mein yeh purchases, savings discipline aur money decisions ko affect karta hai.",
+                "Isse spending control better hoga, savings protect hongi, aur regret purchases kam hongi.",
+                "Isse budgeting steady hogi, savings discipline improve hogi, aur money leaks kam honge.",
             ],
         },
         "health": {
             "en": [
-                "In health, this affects stress, routine, and recovery.",
-                "In health, this shows up through sleep, stamina, and consistency.",
+                "This improves routine stability, reduces stress spikes, and supports steadier recovery.",
+                "This brings better sleep discipline, calmer daily rhythm, and fewer health setbacks.",
             ],
             "hi": [
-                "Health mein yeh stress, routine aur recovery ko affect karta hai.",
-                "Health mein yeh sleep, stamina aur consistency par dikhta hai.",
+                "Isse routine stability improve hogi, stress spikes kam honge, aur recovery zyada steady hogi.",
+                "Isse sleep discipline better hogi, daily rhythm calmer hoga, aur health setbacks kam honge.",
             ],
         },
         "marriage": {
             "en": [
-                "In marriage, this affects reactions, expectations, and clarity.",
-                "In marriage, this shows up through communication, commitment, and emotional response.",
+                "This improves communication, reduces quick conflicts, and brings more clarity in expectations.",
+                "This brings calmer conversations, better emotional control, and more stability in the relationship.",
             ],
             "hi": [
-                "Shaadi mein yeh reactions, expectations aur clarity ko affect karta hai.",
-                "Shaadi mein yeh communication, commitment aur emotional response par dikhta hai.",
+                "Isse communication improve hogi, quick conflicts kam honge, aur expectations mein clarity aayegi.",
+                "Isse conversations calmer hongi, emotional control better hoga, aur relationship mein stability badhegi.",
             ],
         },
     }
 
+    CONTEXT_ADJUSTMENTS = {
+        "career": {
+            "en": [
+                "Understood. I would adjust this toward stabilizing your current work pattern, not restarting your direction.",
+                "Understood. The focus should shift to improving consistency in the role you already have.",
+            ],
+            "hi": [
+                "Samajh gaya. Isse aapke current work pattern ko stable karne par focus hoga, direction restart karne par nahi.",
+                "Samajh gaya. Focus ab us role mein consistency improve karne par hona chahiye jo aap already kar rahe hain.",
+            ],
+        },
+        "finance": {
+            "en": [
+                "Understood. I would adjust this toward protecting what is already working and tightening spending control.",
+                "Understood. The focus should shift to refining your current budget, not starting from zero.",
+            ],
+            "hi": [
+                "Samajh gaya. Isse jo already sahi chal raha hai usko protect karne aur spending control tight karne par focus hoga.",
+                "Samajh gaya. Focus ab current budget ko refine karne par hona chahiye, zero se shuru karne par nahi.",
+            ],
+        },
+        "health": {
+            "en": [
+                "Understood. I would adjust this toward making your existing routine more consistent, not replacing it fully.",
+                "Understood. The focus should shift to reducing setbacks inside your current health routine.",
+            ],
+            "hi": [
+                "Samajh gaya. Isse aapki existing routine ko zyada consistent banane par focus hoga, usko poori tarah replace karne par nahi.",
+                "Samajh gaya. Focus ab current health routine ke andar setbacks kam karne par hona chahiye.",
+            ],
+        },
+        "marriage": {
+            "en": [
+                "Understood. I would adjust this toward improving the current relationship dynamic, not treating it like a fresh start.",
+                "Understood. The focus should shift to communication and stability inside the relationship you already have.",
+            ],
+            "hi": [
+                "Samajh gaya. Isse current relationship dynamic improve karne par focus hoga, ise fresh start ki tarah treat karne par nahi.",
+                "Samajh gaya. Focus ab us relationship ke andar communication aur stability par hona chahiye jo aapke paas already hai.",
+            ],
+        },
+    }
+
+    EXISTING_MARRIAGE_ADJUSTMENTS = {
+        "en": [
+            "Understood, you are already married. The focus now is improving the current marriage, not marriage timing.",
+            "Understood, this is about your existing marriage. The focus now is reducing friction and building better communication.",
+        ],
+        "hi": [
+            "Samajh gaya, aap already married hain. Focus ab current marriage ko improve karne par hai, marriage timing par nahi.",
+            "Samajh gaya, yeh aapki existing marriage ke baare mein hai. Focus ab friction kam karne aur better communication banane par hai.",
+        ],
+    }
+
     FOLLOWUP_TYPE_ORDER = {
-        "definition": ["definition", "detail", "timing", "instruction"],
-        "instruction": ["instruction", "detail", "definition", "timing"],
-        "timing": ["timing", "detail", "definition", "instruction"],
-        "detail": ["detail", "definition", "timing", "instruction"],
-        "general": ["detail", "definition", "timing", "instruction"],
+        "definition": ["definition", "clarification", "instruction", "timing"],
+        "instruction": ["instruction", "clarification", "timing"],
+        "clarification": ["clarification", "instruction", "timing"],
+        "context_update": ["context_update", "clarification", "instruction", "timing"],
+        "timing": ["timing", "clarification", "instruction"],
+        "detail": ["clarification", "instruction", "timing"],
+        "general": ["clarification", "instruction", "timing"],
     }
 
     NEXT_STAGE_MAP = {
         MODE_ANALYSIS: ANALYSIS,
         "definition": EXPLANATION,
-        "detail": EXPLANATION,
+        "clarification": EXPLANATION,
+        "context_update": EXPLANATION,
         "timing": TIMING,
         "instruction": GUIDANCE,
-        "remedy": REMEDY,
     }
 
     @staticmethod
@@ -249,6 +310,13 @@ class ConsultationEngine:
             return ""
         index = 0 if variant <= 0 else min(variant, len(entries) - 1)
         return str(entries[index]).strip()
+
+    @staticmethod
+    def _topic_key(topic):
+        value = str(topic or "").strip().lower()
+        if value in {"career", "finance", "health", "marriage"}:
+            return value
+        return "career"
 
     @staticmethod
     def _stage_from_legacy(parsed):
@@ -427,42 +495,84 @@ class ConsultationEngine:
         }
 
     @staticmethod
+    def _normalized_intent_name(intent):
+        if isinstance(intent, dict):
+            intent = intent.get("intent")
+        value = str(intent or "").strip().lower()
+        if value == "detail":
+            return "clarification"
+        if value in {"definition", "instruction", "clarification", "context_update", "timing"}:
+            return value
+        return "general"
+
+    @staticmethod
     def _intent_value(normalized_intent, user_text):
         if isinstance(normalized_intent, dict):
-            return normalized_intent.get("intent") or "general"
+            return ConsultationEngine._normalized_intent_name(normalized_intent.get("intent"))
         if isinstance(normalized_intent, str):
-            return normalized_intent
-        return IntentRouter.normalize_intent(user_text).get("intent") or "general"
+            return ConsultationEngine._normalized_intent_name(normalized_intent)
+        return ConsultationEngine._normalized_intent_name(IntentRouter.normalize_intent(user_text).get("intent"))
+
+    @staticmethod
+    def _guidance_payload(state, analysis_payload, language, consult_stage, intent="general", variant=0):
+        return translate_to_life_guidance(
+            analysis=analysis_payload,
+            topic=state.get("topic"),
+            consult_stage=consult_stage,
+            language=language,
+            intent=intent,
+            variant=variant,
+        )
 
     @staticmethod
     def _analysis_response(state, analysis_payload, language, script):
-        for stage in (1, 2):
-            for variant in (0, 1):
-                guidance = translate_to_life_guidance(
-                    analysis=analysis_payload,
-                    topic=state.get("topic"),
-                    consult_stage=stage,
-                    language=language,
-                    intent="general",
-                    variant=variant,
-                )
-                text = PersonaLayer.format_guidance(
-                    guidance=guidance,
-                    language=language,
-                    script=script,
-                    intent="general",
-                )
-                if not PersonaLayer.validate_response(text, topic=state.get("topic"), intent="general"):
-                    continue
-                if text == state.get("last_response"):
-                    continue
-                return text
+        for variant in (0, 1):
+            guidance = ConsultationEngine._guidance_payload(
+                state=state,
+                analysis_payload=analysis_payload,
+                language=language,
+                consult_stage=1,
+                intent="general",
+                variant=variant,
+            )
+            text = PersonaLayer.format_guidance(
+                guidance=guidance,
+                language=language,
+                script=script,
+                intent="general",
+            )
+            if not PersonaLayer.validate_response(text, topic=state.get("topic"), intent="general"):
+                continue
+            if text == state.get("last_response"):
+                continue
+            return text
 
-        guidance = translate_to_life_guidance(
-            analysis=analysis_payload,
-            topic=state.get("topic"),
-            consult_stage=1,
+        for variant in (0, 1):
+            guidance = ConsultationEngine._guidance_payload(
+                state=state,
+                analysis_payload=analysis_payload,
+                language=language,
+                consult_stage=2,
+                intent="general",
+                variant=variant,
+            )
+            text = PersonaLayer.format_guidance(
+                guidance=guidance,
+                language=language,
+                script=script,
+                intent="general",
+            )
+            if not PersonaLayer.validate_response(text, topic=state.get("topic"), intent="general"):
+                continue
+            if text == state.get("last_response"):
+                continue
+            return text
+
+        guidance = ConsultationEngine._guidance_payload(
+            state=state,
+            analysis_payload=analysis_payload,
             language=language,
+            consult_stage=1,
             intent="general",
             variant=0,
         )
@@ -518,11 +628,11 @@ class ConsultationEngine:
     @staticmethod
     def _instruction_response(state, analysis_payload, language, variant=0):
         consult_stage = 4 if variant == 0 else 5
-        guidance = translate_to_life_guidance(
-            analysis=analysis_payload,
-            topic=state.get("topic"),
-            consult_stage=consult_stage,
+        guidance = ConsultationEngine._guidance_payload(
+            state=state,
+            analysis_payload=analysis_payload,
             language=language,
+            consult_stage=consult_stage,
             intent="instruction",
             variant=variant,
         )
@@ -534,22 +644,50 @@ class ConsultationEngine:
         return "\n".join(steps[:3]).strip()
 
     @staticmethod
-    def _detail_response(state, user_text, analysis_payload, language, variant=0):
-        planet = IntentRouter.detect_planet(user_text, fallback=analysis_payload.get("planet"))
-        planet = ConsultationEngine._normalize_planet(planet, analysis_payload.get("planet"))
-        topic = str(state.get("topic") or "career").strip().lower()
-        definition_line = ConsultationEngine._definition_response(user_text, analysis_payload, language, variant=variant)
-        detail_payload = ConsultationEngine.DETAIL_LINES.get(topic, ConsultationEngine.DETAIL_LINES["career"])
-        detail_line = ConsultationEngine._localized(detail_payload, language, variant=variant)
+    def _clarification_response(state, analysis_payload, language, variant=0):
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+        outcome = ConsultationEngine._localized(ConsultationEngine.OUTCOME_LINES.get(topic, {}), language, variant=variant)
+        if variant == 0:
+            return outcome
 
+        window = ConsultationEngine._time_window(analysis_payload, language, variant=0)
         if ConsultationEngine._language_key(language) == "en":
-            if variant == 0:
-                return f"{definition_line}\nRight now {planet} matters because {detail_line.lower()}"
-            return f"{definition_line}\nThis is why {detail_line.lower()}"
+            return f"{outcome}\nYou should notice this in {window}."
+        return f"{outcome}\nIska farq {window} mein dikhna chahiye."
+
+    @staticmethod
+    def _context_update_kind(state, user_text):
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+        normalized = IntentRouter._normalize_text(user_text)
+        if topic == "marriage":
+            special_phrases = (
+                "already married",
+                "married already",
+                "ho chuka",
+                "ho chuki",
+                "shaadi ho chuki",
+                "shaadi ho chuka",
+            )
+            if any(phrase in normalized for phrase in special_phrases):
+                return "existing_marriage"
+        return "general"
+
+    @staticmethod
+    def _context_update_response(state, user_text, analysis_payload, language, variant=0):
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+        if ConsultationEngine._context_update_kind(state, user_text) == "existing_marriage":
+            base = ConsultationEngine._localized(ConsultationEngine.EXISTING_MARRIAGE_ADJUSTMENTS, language, variant=variant)
+        else:
+            base = ConsultationEngine._localized(ConsultationEngine.CONTEXT_ADJUSTMENTS.get(topic, {}), language, variant=variant)
 
         if variant == 0:
-            return f"{definition_line}\nAbhi {planet} important hai kyunki {detail_line.lower()}"
-        return f"{definition_line}\nIsi wajah se {detail_line.lower()}"
+            return base
+
+        outcome = ConsultationEngine._localized(ConsultationEngine.OUTCOME_LINES.get(topic, {}), language, variant=0)
+        window = ConsultationEngine._time_window(analysis_payload, language, variant=0)
+        if ConsultationEngine._language_key(language) == "en":
+            return f"{base}\nThe adjusted result should feel clearer in {window}."
+        return f"{base}\nAdjusted result {window} mein zyada clear dikhna chahiye."
 
     @staticmethod
     def _timing_response(analysis_payload, language, variant=0):
@@ -561,59 +699,156 @@ class ConsultationEngine:
             return ConsultationEngine._definition_response(user_text, analysis_payload, language, variant=variant)
         if response_type == "instruction":
             return ConsultationEngine._instruction_response(state, analysis_payload, language, variant=variant)
+        if response_type == "clarification":
+            return ConsultationEngine._clarification_response(state, analysis_payload, language, variant=variant)
+        if response_type == "context_update":
+            return ConsultationEngine._context_update_response(state, user_text, analysis_payload, language, variant=variant)
         if response_type == "timing":
             return ConsultationEngine._timing_response(analysis_payload, language, variant=variant)
-        return ConsultationEngine._detail_response(state, user_text, analysis_payload, language, variant=variant)
+        return ConsultationEngine._clarification_response(state, analysis_payload, language, variant=variant)
 
     @staticmethod
     def _followup_type_order(intent):
-        normalized_intent = intent if intent in ConsultationEngine.FOLLOWUP_TYPE_ORDER else "general"
-        return ConsultationEngine.FOLLOWUP_TYPE_ORDER[normalized_intent]
+        normalized_intent = ConsultationEngine._normalized_intent_name(intent)
+        return ConsultationEngine.FOLLOWUP_TYPE_ORDER.get(normalized_intent, ConsultationEngine.FOLLOWUP_TYPE_ORDER["general"])
+
+    @staticmethod
+    def _contains_planet_reference(text):
+        lowered = str(text or "").lower()
+        for planet in ConsultationEngine.KNOWN_PLANETS:
+            if re.search(rf"\b{re.escape(planet.lower())}\b", lowered):
+                return True
+        return False
+
+    @staticmethod
+    def _contains_template_labels(text):
+        lines = [line.strip().lower() for line in str(text or "").splitlines() if line.strip()]
+        return any(any(line.startswith(label) for label in ConsultationEngine.TEMPLATE_LABELS) for line in lines)
+
+    @staticmethod
+    def _contains_blocked_words(text):
+        lowered = str(text or "").lower()
+        return any(word in lowered for word in PersonaLayer.BLOCKED_WORDS)
+
+    @staticmethod
+    def _has_timeframe_hint(text):
+        lowered = str(text or "").lower()
+        return any(hint in lowered for hint in ConsultationEngine.TIMEFRAME_HINTS)
+
+    @staticmethod
+    def _is_valid_followup(response_type, text):
+        raw = str(text or "").strip()
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+
+        if not raw:
+            return False
+        if ConsultationEngine._contains_template_labels(raw):
+            return False
+        if ConsultationEngine._contains_blocked_words(raw):
+            return False
+
+        if response_type == "definition":
+            return len(lines) <= 2
+
+        if response_type == "instruction":
+            if len(lines) < 2 or len(lines) > 3:
+                return False
+            if ConsultationEngine._contains_planet_reference(raw):
+                return False
+            return all(re.match(r"^\d+\.\s+\S+", line) for line in lines)
+
+        if response_type == "timing":
+            if len(lines) != 1:
+                return False
+            if ConsultationEngine._contains_planet_reference(raw):
+                return False
+            return ConsultationEngine._has_timeframe_hint(raw)
+
+        if response_type in {"clarification", "context_update"}:
+            if len(lines) > 2:
+                return False
+            if ConsultationEngine._contains_planet_reference(raw):
+                return False
+            return True
+
+        return False
 
     @staticmethod
     def _followup_response(state, user_text, analysis_payload, language, intent):
         last_response = str(state.get("last_response") or "").strip()
+        ordered_types = ConsultationEngine._followup_type_order(intent)
+        primary_type = ordered_types[0]
 
-        for response_type in ConsultationEngine._followup_type_order(intent):
-            for variant in (0, 1):
-                text = ConsultationEngine._render_followup(
-                    response_type=response_type,
-                    state=state,
-                    user_text=user_text,
-                    analysis_payload=analysis_payload,
-                    language=language,
-                    variant=variant,
-                )
-                if not text:
-                    continue
-                if text == last_response:
-                    continue
-                return text, response_type
-
-        fallback_type = ConsultationEngine._followup_type_order(intent)[-1]
-        fallback_text = ConsultationEngine._render_followup(
-            response_type=fallback_type,
+        primary_text = ConsultationEngine._render_followup(
+            response_type=primary_type,
             state=state,
             user_text=user_text,
             analysis_payload=analysis_payload,
             language=language,
-            variant=1,
+            variant=0,
         )
-        return fallback_text, fallback_type
+        if ConsultationEngine._is_valid_followup(primary_type, primary_text) and primary_text != last_response:
+            return primary_text, primary_type
+
+        for response_type in ordered_types[1:]:
+            text = ConsultationEngine._render_followup(
+                response_type=response_type,
+                state=state,
+                user_text=user_text,
+                analysis_payload=analysis_payload,
+                language=language,
+                variant=0,
+            )
+            if not ConsultationEngine._is_valid_followup(response_type, text):
+                continue
+            if text == last_response:
+                continue
+            return text, response_type
+
+        for response_type in ordered_types:
+            text = ConsultationEngine._render_followup(
+                response_type=response_type,
+                state=state,
+                user_text=user_text,
+                analysis_payload=analysis_payload,
+                language=language,
+                variant=1,
+            )
+            if not ConsultationEngine._is_valid_followup(response_type, text):
+                continue
+            if text == last_response:
+                continue
+            return text, response_type
+
+        fallback_candidates = [
+            ("clarification", ConsultationEngine._clarification_response(state, analysis_payload, language, variant=1)),
+            ("context_update", ConsultationEngine._context_update_response(state, user_text, analysis_payload, language, variant=1)),
+            ("instruction", ConsultationEngine._instruction_response(state, analysis_payload, language, variant=1)),
+            ("timing", ConsultationEngine._timing_response(analysis_payload, language, variant=1)),
+            ("definition", ConsultationEngine._definition_response(user_text, analysis_payload, language, variant=1)),
+        ]
+        for response_type, text in fallback_candidates:
+            if not ConsultationEngine._is_valid_followup(response_type, text):
+                continue
+            if text == last_response:
+                continue
+            return text, response_type
+
+        return primary_text, primary_type
 
     @staticmethod
     def _next_consult_stage(current_stage, response_type):
         current_stage = ConsultationEngine._clamp_stage(current_stage)
         if response_type == ConsultationEngine.MODE_ANALYSIS:
             return 2
-        if response_type == "definition":
+        if response_type in {"definition", "clarification", "context_update"}:
             return max(current_stage, 2)
-        if response_type == "detail":
-            return ConsultationEngine._clamp_stage(max(current_stage, 2) + 1)
         if response_type == "timing":
             return max(current_stage, 3)
         if response_type == "instruction":
             return max(current_stage, 4)
+        if response_type == "remedy":
+            return 5
         return current_stage
 
     @staticmethod
@@ -685,9 +920,6 @@ class ConsultationEngine:
             }
 
         intent = ConsultationEngine._intent_value(normalized_intent, user_text)
-        if intent not in {"definition", "instruction", "timing", "detail"}:
-            intent = "general"
-
         text, used_type = ConsultationEngine._followup_response(
             state=state,
             user_text=user_text,

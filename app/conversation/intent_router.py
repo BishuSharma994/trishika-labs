@@ -40,18 +40,27 @@ class IntentRouter:
     }
 
     INTENT_MAP = {
+        "already married": "context_update",
         "what should i do": "instruction",
+        "how exactly": "clarification",
+        "kaise sudhar": "clarification",
+        "what kind": "clarification",
         "how long": "timing",
         "what is": "definition",
         "kya hai": "definition",
         "yeh kya": "definition",
         "matlab": "definition",
+        "lekin": "context_update",
+        "already": "context_update",
+        "ho chuka": "context_update",
+        "but": "context_update",
+        "kaisa": "clarification",
         "kaisey": "instruction",
         "kaise": "instruction",
         "how": "instruction",
         "kab": "timing",
-        "aur": "detail",
-        "more": "detail",
+        "aur": "clarification",
+        "more": "clarification",
     }
 
     GENERAL_TARGETS = {
@@ -93,11 +102,13 @@ class IntentRouter:
             if re.search(rf"\b{re.escape(phrase)}\b", normalized):
                 return {
                     "intent": intent,
+                    "matched_phrase": phrase,
                     "normalized_text": normalized,
                 }
 
         return {
             "intent": "general",
+            "matched_phrase": "",
             "normalized_text": normalized,
         }
 
