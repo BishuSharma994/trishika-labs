@@ -42,26 +42,33 @@ class IntentRouter:
     INTENT_MAP = {
         "what should i do": "instruction",
         "how long": "timing",
+        "what is": "definition",
+        "kya hai": "definition",
+        "yeh kya": "definition",
+        "matlab": "definition",
         "kaisey": "instruction",
         "kaise": "instruction",
         "how": "instruction",
+        "kab": "timing",
         "aur": "detail",
         "more": "detail",
-    }
-
-    EXTRA_INTENT_KEYWORDS = {
-        "when": "timing",
-        "kab": "timing",
-        "timing": "timing",
-        "remedy": "remedy",
-        "upay": "remedy",
-        "detail": "detail",
-        "explain": "detail",
     }
 
     GENERAL_TARGETS = {
         "target_houses": [1, 5, 9],
         "target_planets": ["Moon", "Saturn"],
+    }
+
+    PLANET_KEYWORDS = {
+        "sun": "Sun",
+        "moon": "Moon",
+        "mars": "Mars",
+        "mercury": "Mercury",
+        "jupiter": "Jupiter",
+        "venus": "Venus",
+        "saturn": "Saturn",
+        "rahu": "Rahu",
+        "ketu": "Ketu",
     }
 
     @staticmethod
@@ -83,13 +90,6 @@ class IntentRouter:
             key=lambda item: len(item[0]),
             reverse=True,
         ):
-            if re.search(rf"\b{re.escape(phrase)}\b", normalized):
-                return {
-                    "intent": intent,
-                    "normalized_text": normalized,
-                }
-
-        for phrase, intent in IntentRouter.EXTRA_INTENT_KEYWORDS.items():
             if re.search(rf"\b{re.escape(phrase)}\b", normalized):
                 return {
                     "intent": intent,
@@ -129,6 +129,14 @@ class IntentRouter:
     @staticmethod
     def normalize_topic(text):
         return IntentRouter.detect_domain(text, current_domain=None)
+
+    @staticmethod
+    def detect_planet(text, fallback=None):
+        normalized = IntentRouter._normalize_text(text)
+        for token, planet in IntentRouter.PLANET_KEYWORDS.items():
+            if re.search(rf"\b{re.escape(token)}\b", normalized):
+                return planet
+        return fallback
 
     @staticmethod
     def get_astrology_targets(intent):
