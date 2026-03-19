@@ -26,6 +26,7 @@ class ConsultationEngine:
         "context_update": 2,
         "timing": 3,
         "instruction": 4,
+        "step_detail": 4,
         "validation": 2,
         "remedy": 5,
     }
@@ -335,6 +336,135 @@ class ConsultationEngine:
         ],
     }
 
+    STEP_DETAIL_LINES = {
+        "career": {
+            "en": [
+                "Review which task kept getting delayed, where expectations were unclear, and which decision stayed pending without follow-up.",
+                "In your review, check where work slowed down, what instruction stayed vague, and which priority changed without clear discussion.",
+            ],
+            "hi": [
+                "Review mein dekhiye kaunsa kaam baar baar atka, kis jagah expectation clear nahi thi, aur kaun sa decision follow-up ke bina pending reh gaya.",
+                "Har review mein yeh dekhiye ki kaam kis point par slow hua, instruction kahan vague thi, aur kaunsi priority bina saaf baat ke badal gayi.",
+            ],
+        },
+        "finance": {
+            "en": [
+                "Review where impulse spending happened, which category crossed budget, and which payment should have been planned earlier.",
+                "In your review, check what spending was unnecessary, where budget discipline slipped, and which money decision was taken too quickly.",
+            ],
+            "hi": [
+                "Review mein dekhiye kahan impulsive kharch hua, kis category mein budget toot gaya, aur kaunsi payment pehle plan honi chahiye thi.",
+                "Har review mein yeh dekhiye ki kaunsa kharch zaroori nahi tha, budget discipline kahan loose hui, aur paise ka kaunsa decision jaldi mein liya gaya.",
+            ],
+        },
+        "health": {
+            "en": [
+                "Review where the routine broke, which trigger increased stress, and which habit was missed most often.",
+                "In your review, check what disturbed your rhythm, where recovery slowed down, and which health habit kept slipping.",
+            ],
+            "hi": [
+                "Review mein dekhiye routine kis point par toota, stress kis trigger se badha, aur kaunsi habit sabse zyada miss hui.",
+                "Har review mein yeh dekhiye ki rhythm kis wajah se bigdi, recovery kahan slow hui, aur health ki kaunsi habit baar baar chhoot rahi hai.",
+            ],
+        },
+        "marriage": {
+            "en": [
+                "Review which issue created tension, where expectations were unclear, and which shared decision was taken without full discussion.",
+                "In your review, check what hurt was left unspoken, where communication stayed incomplete, and which decision both sides were not aligned on.",
+            ],
+            "hi": [
+                "Review mein dekhiye kis baat par tanav bana, kis expectation par confusion hua, aur kaun sa shared decision bina poori baat ke liya gaya.",
+                "Har review mein yeh dekhiye ki kis baat ka bura laga par bola nahi gaya, kahan baat adhuri reh gayi, aur kis faisle par dono same page par nahi the.",
+            ],
+        },
+    }
+
+    ANALYSIS_MEANING_LINES = {
+        "career": {
+            "en": [
+                "This means your career needs steadier structure right now; progress will improve when priorities and follow-through become more disciplined.",
+                "The simple meaning is that work growth is possible, but it will come through clearer direction and consistent effort.",
+            ],
+            "hi": [
+                "Iska matlab abhi career ko zyada steady structure chahiye; progress tab better hogi jab priorities aur follow-through disciplined honge.",
+                "Seedha matlab yeh hai ki work growth possible hai, par uske liye direction clear aur effort consistent rakhna hoga.",
+            ],
+        },
+        "finance": {
+            "en": [
+                "This means money stability improves when spending becomes more deliberate and savings stay protected.",
+                "The simple meaning is that your finances need tighter control right now, not rushed money decisions.",
+            ],
+            "hi": [
+                "Iska matlab paise ki stability tab improve hogi jab spending zyada soch samajh kar hogi aur savings protect rahengi.",
+                "Seedha matlab yeh hai ki abhi finances ko tighter control chahiye, jaldi mein liye gaye paise ke decisions nahi.",
+            ],
+        },
+        "health": {
+            "en": [
+                "This means your health improves through rhythm and recovery, not through random effort.",
+                "The simple meaning is that your system needs consistency right now more than intensity.",
+            ],
+            "hi": [
+                "Iska matlab health rhythm aur recovery se improve hogi, random effort se nahi.",
+                "Seedha matlab yeh hai ki abhi body ko intensity se zyada consistency chahiye.",
+            ],
+        },
+        "marriage": {
+            "en": [
+                "This means the relationship improves through calmer communication and clearer expectations, not through silence or quick reactions.",
+                "The simple meaning is that marriage needs softness and clarity right now so small issues do not become bigger friction.",
+            ],
+            "hi": [
+                "Iska matlab relationship shaant baat-cheet aur saaf expectations se improve hogi, chup rehne ya turant react karne se nahi.",
+                "Seedha matlab yeh hai ki marriage ko abhi softness aur clarity chahiye taaki choti baat bada tanav na ban jaye.",
+            ],
+        },
+    }
+
+    ADVICE_DEFINITION_LINES = {
+        "career": {
+            "en": [
+                "This means do not let work run on assumption. Keep priorities explicit and review where execution is slipping.",
+                "The simple meaning is to catch delay early, clear confusion quickly, and keep your work pattern disciplined.",
+            ],
+            "hi": [
+                "Iska matlab kaam ko assumption par mat chalne dijiye. Priorities saaf rakhiye aur jahan execution slip ho raha hai usko review kijiye.",
+                "Seedha matlab yeh hai ki delay ko jaldi pakdiye, confusion ko seedha clear kijiye aur apna work pattern disciplined rakhiye.",
+            ],
+        },
+        "finance": {
+            "en": [
+                "This means money should not move on impulse. Review where control breaks and bring decisions back under discipline.",
+                "The simple meaning is to notice small leaks early and keep spending aligned with your real priorities.",
+            ],
+            "hi": [
+                "Iska matlab paise ko impulse par mat chalne dijiye. Jahan control toot raha hai usko review kijiye aur decisions ko discipline mein lijiye.",
+                "Seedha matlab yeh hai ki chote money leaks ko jaldi pakdiye aur spending ko apni asli priorities ke saath align rakhiye.",
+            ],
+        },
+        "health": {
+            "en": [
+                "This means the body needs regularity. Review where routine breaks and correct that point calmly.",
+                "The simple meaning is to protect your daily rhythm and not ignore the habits that keep recovery steady.",
+            ],
+            "hi": [
+                "Iska matlab body ko regularity chahiye. Jahan routine toot rahi hai us point ko review karke shaant tareeke se sahi kijiye.",
+                "Seedha matlab yeh hai ki daily rhythm ko protect rakhiye aur un habits ko ignore mat kijiye jo recovery steady rakhti hain.",
+            ],
+        },
+        "marriage": {
+            "en": [
+                "This means do not let the marriage run on guesswork. Notice where tension starts and clear it through calm conversation.",
+                "The simple meaning is to catch hurt early, keep expectations visible, and review shared decisions before they become friction.",
+            ],
+            "hi": [
+                "Iska matlab marriage ko guesswork par mat chalne dijiye. Jahan tanav shuru hota hai usko notice karke shaant baat se clear kijiye.",
+                "Seedha matlab yeh hai ki hurt ko jaldi pakdiye, expectations ko visible rakhiye aur shared decisions ko friction banne se pehle review kijiye.",
+            ],
+        },
+    }
+
     CONTEXT_ADJUSTMENTS = {
         "career": {
             "en": [
@@ -391,8 +521,9 @@ class ConsultationEngine:
 
     FOLLOWUP_TYPE_ORDER = {
         "affirmation": ["affirmation", "mechanism", "clarification", "instruction"],
-        "definition": ["definition", "clarification", "instruction", "timing"],
-        "instruction": ["instruction", "clarification", "timing"],
+        "definition": ["definition", "mechanism", "clarification", "step_detail", "instruction", "timing"],
+        "instruction": ["instruction", "step_detail", "clarification", "timing"],
+        "step_detail": ["step_detail", "mechanism", "clarification", "instruction"],
         "mechanism": ["mechanism", "clarification", "instruction"],
         "clarification": ["clarification", "instruction", "timing"],
         "context_update": ["context_update", "clarification", "instruction", "timing"],
@@ -411,6 +542,7 @@ class ConsultationEngine:
         "context_update": EXPLANATION,
         "timing": TIMING,
         "instruction": GUIDANCE,
+        "step_detail": GUIDANCE,
         "validation": EXPLANATION,
     }
 
@@ -658,6 +790,7 @@ class ConsultationEngine:
             "affirmation",
             "definition",
             "instruction",
+            "step_detail",
             "mechanism",
             "clarification",
             "context_update",
@@ -781,11 +914,26 @@ class ConsultationEngine:
         return f"Lagbhag {window}"
 
     @staticmethod
-    def _definition_response(user_text, analysis_payload, language, variant=0):
-        planet = IntentRouter.detect_planet(user_text, fallback=analysis_payload.get("planet"))
-        planet = ConsultationEngine._normalize_planet(planet, analysis_payload.get("planet"))
-        definitions = ConsultationEngine.PLANET_DEFINITIONS.get(planet, ConsultationEngine.PLANET_DEFINITIONS["Moon"])
-        return ConsultationEngine._localized(definitions, language, variant=variant)
+    def _definition_response(state, user_text, analysis_payload, language, variant=0):
+        explicit_planet = IntentRouter.detect_planet(user_text, fallback=None)
+        if explicit_planet:
+            planet = ConsultationEngine._normalize_planet(explicit_planet, analysis_payload.get("planet"))
+            definitions = ConsultationEngine.PLANET_DEFINITIONS.get(planet, ConsultationEngine.PLANET_DEFINITIONS["Moon"])
+            return ConsultationEngine._localized(definitions, language, variant=variant)
+
+        last_response_type = str(state.get("last_response_type") or "").strip().lower()
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+
+        if last_response_type == ConsultationEngine.MODE_ANALYSIS:
+            return ConsultationEngine._localized(ConsultationEngine.ANALYSIS_MEANING_LINES.get(topic, {}), language, variant=variant)
+
+        if last_response_type == "timing":
+            window = ConsultationEngine._time_window(analysis_payload, language, variant=0)
+            if ConsultationEngine._language_key(language) == "en":
+                return f"This means improvement should become noticeable in {window} if the guidance stays consistent."
+            return f"Iska matlab guidance ko regular rakhenge to sudhar {window} mein noticeable hoga."
+
+        return ConsultationEngine._localized(ConsultationEngine.ADVICE_DEFINITION_LINES.get(topic, {}), language, variant=variant)
 
     @staticmethod
     def _instruction_response(state, analysis_payload, language, variant=0):
@@ -806,6 +954,11 @@ class ConsultationEngine:
         return "\n".join(steps[:3]).strip()
 
     @staticmethod
+    def _step_detail_response(state, language, variant=0):
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+        return ConsultationEngine._localized(ConsultationEngine.STEP_DETAIL_LINES.get(topic, {}), language, variant=variant)
+
+    @staticmethod
     def _mechanism_response(state, language, variant=0):
         topic = ConsultationEngine._topic_key(state.get("topic"))
         return ConsultationEngine._localized(ConsultationEngine.MECHANISM_LINES.get(topic, {}), language, variant=variant)
@@ -817,7 +970,7 @@ class ConsultationEngine:
 
     @staticmethod
     def _affirmation_response(state, language, variant=0):
-        if str(state.get("last_response_type") or "").strip().lower() == "instruction":
+        if str(state.get("last_response_type") or "").strip().lower() in {"instruction", "step_detail"}:
             return ConsultationEngine._localized(ConsultationEngine.INSTRUCTION_REINFORCEMENT, language, variant=variant)
         topic = ConsultationEngine._topic_key(state.get("topic"))
         return ConsultationEngine._localized(ConsultationEngine.AFFIRMATION_LINES.get(topic, {}), language, variant=variant)
@@ -877,9 +1030,11 @@ class ConsultationEngine:
         if response_type == "affirmation":
             return ConsultationEngine._affirmation_response(state, language, variant=variant)
         if response_type == "definition":
-            return ConsultationEngine._definition_response(user_text, analysis_payload, language, variant=variant)
+            return ConsultationEngine._definition_response(state, user_text, analysis_payload, language, variant=variant)
         if response_type == "instruction":
             return ConsultationEngine._instruction_response(state, analysis_payload, language, variant=variant)
+        if response_type == "step_detail":
+            return ConsultationEngine._step_detail_response(state, language, variant=variant)
         if response_type == "mechanism":
             return ConsultationEngine._mechanism_response(state, language, variant=variant)
         if response_type == "clarification":
@@ -949,7 +1104,7 @@ class ConsultationEngine:
                 return False
             return ConsultationEngine._has_timeframe_hint(raw)
 
-        if response_type in {"affirmation", "mechanism", "clarification", "context_update", "validation"}:
+        if response_type in {"affirmation", "step_detail", "mechanism", "clarification", "context_update", "validation"}:
             if len(lines) > 2:
                 return False
             if ConsultationEngine._contains_planet_reference(raw):
@@ -1007,13 +1162,14 @@ class ConsultationEngine:
 
         fallback_candidates = [
             ("affirmation", ConsultationEngine._affirmation_response(state, language, variant=1)),
+            ("step_detail", ConsultationEngine._step_detail_response(state, language, variant=1)),
             ("mechanism", ConsultationEngine._mechanism_response(state, language, variant=1)),
             ("clarification", ConsultationEngine._clarification_response(state, analysis_payload, language, variant=1)),
             ("context_update", ConsultationEngine._context_update_response(state, user_text, analysis_payload, language, variant=1)),
             ("instruction", ConsultationEngine._instruction_response(state, analysis_payload, language, variant=1)),
             ("timing", ConsultationEngine._timing_response(analysis_payload, language, variant=1)),
             ("validation", ConsultationEngine._validation_response(state, language, variant=1)),
-            ("definition", ConsultationEngine._definition_response(user_text, analysis_payload, language, variant=1)),
+            ("definition", ConsultationEngine._definition_response(state, user_text, analysis_payload, language, variant=1)),
         ]
         for response_type, text in fallback_candidates:
             if not ConsultationEngine._is_valid_followup(response_type, text):
@@ -1033,7 +1189,7 @@ class ConsultationEngine:
             return max(current_stage, 2)
         if response_type == "timing":
             return max(current_stage, 3)
-        if response_type == "instruction":
+        if response_type in {"instruction", "step_detail"}:
             return max(current_stage, 4)
         if response_type == "remedy":
             return 5

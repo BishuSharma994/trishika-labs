@@ -141,6 +141,34 @@ DialogEngine.load_chart = staticmethod(lambda *_args, **_kwargs: _mock_chart())
 
 SCENARIOS = [
     {
+        "name": "Marriage Meaning Recovery",
+        "messages": [
+            "/start",
+            "Roman Hindi",
+            "Marriage",
+            "01/01/1993",
+            "10:30 AM",
+            "Delhi",
+            "Male",
+            "Bishu",
+            "Haan",
+            "Shaadi kab improve hogi?",
+            "mera shaadi ho chuka hai",
+            "ji",
+            "kaisey?",
+            "kiya review karu",
+            "kiya",
+            "matlab?",
+        ],
+        "checks": [
+            {"user": "kaisey?", "must_start_with": "1."},
+            {"user": "kiya review karu", "must_include": "kis baat par tanav bana"},
+            {"user": "kiya", "must_include": "marriage ko guesswork par mat chalne dijiye"},
+            {"user": "matlab?", "must_include": "saaf expectations"},
+        ],
+        "expected_final_domain": "marriage",
+    },
+    {
         "name": "Marriage Follow-up Recovery",
         "messages": [
             "/start",
