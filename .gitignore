@@ -4,3 +4,4 @@ __pycache__/
 .env
 users.db
 project_export.zip
+ngrok*

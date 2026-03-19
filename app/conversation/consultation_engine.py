@@ -18,12 +18,15 @@ class ConsultationEngine:
     }
 
     INTENT_STAGE_MAP = {
+        "affirmation": 2,
         "definition": 2,
+        "mechanism": 2,
         "clarification": 2,
         "detail": 2,
         "context_update": 2,
         "timing": 3,
         "instruction": 4,
+        "validation": 2,
         "remedy": 5,
     }
 
@@ -192,6 +195,146 @@ class ConsultationEngine:
         },
     }
 
+    MECHANISM_LINES = {
+        "career": {
+            "en": [
+                "This shift comes through clearer priorities, steadier work rhythm, and fewer rushed decisions.",
+                "It improves when your routine stays disciplined, communication stays direct, and delays are handled early.",
+            ],
+            "hi": [
+                "Yeh sudhar saaf priorities, theek kaam ki raftaar aur jaldbaazi wale decisions kam karne se aata hai.",
+                "Yeh tab strong hota hai jab routine disciplined rahe, baat seedhi rahe aur delay ko jaldi sambhala jaye.",
+            ],
+        },
+        "finance": {
+            "en": [
+                "This shift comes through tighter spending rules, delayed impulse purchases, and regular budget review.",
+                "It improves when money decisions slow down, savings stay protected, and spending stays intentional.",
+            ],
+            "hi": [
+                "Yeh sudhar kharch par niyam rakhne, impulsive kharche delay karne aur budget regular dekhne se aata hai.",
+                "Yeh tab improve hota hai jab paise ke decisions thode dheere liye jayein, savings surakshit rahe aur kharch soch samajh kar ho.",
+            ],
+        },
+        "health": {
+            "en": [
+                "This shift comes through a fixed routine, better sleep discipline, and faster response to stress triggers.",
+                "It improves when recovery stays regular, daily rhythm stays calmer, and routine breaks are reduced.",
+            ],
+            "hi": [
+                "Yeh sudhar fixed routine, better sleep discipline aur stress triggers ko jaldi sambhalne se aata hai.",
+                "Yeh tab improve hota hai jab recovery regular rahe, roz ka rhythm shaant rahe aur routine breaks kam ho jayein.",
+            ],
+        },
+        "marriage": {
+            "en": [
+                "This shift comes through clearer expectations, calmer conversations, and less reactive decision making.",
+                "It improves when both sides speak early, listen properly, and avoid turning small issues into bigger friction.",
+            ],
+            "hi": [
+                "Yeh sudhar saaf expectations, shaant baat-cheet aur turant reaction kam karne se aata hai.",
+                "Yeh tab improve hota hai jab dono side waqt par baat karein, dhyan se sunein aur choti baat ko bada tanav na banne dein.",
+            ],
+        },
+    }
+
+    VALIDATION_LINES = {
+        "career": {
+            "en": [
+                "Yes, this does happen. When work pressure and unclear priorities build together, even small delays start affecting progress.",
+                "Yes, it happens. Career confusion often grows quietly first, then shows up as inconsistency or delayed results.",
+            ],
+            "hi": [
+                "Haan, aisa hota hai. Jab kaam ka pressure aur unclear priorities saath build hote hain, tab chote delay bhi progress ko affect karte hain.",
+                "Haan, hota hai. Career confusion pehle dheere build hoti hai, phir inconsistency ya delayed results ke roop mein dikhti hai.",
+            ],
+        },
+        "finance": {
+            "en": [
+                "Yes, this does happen. Money pressure often builds through small repeated choices before it becomes obvious.",
+                "Yes, it happens. Spending imbalance usually starts in daily habits, not only in one big mistake.",
+            ],
+            "hi": [
+                "Haan, aisa hota hai. Paise ka pressure aksar choti repeated choices se build hota hai, phir baad mein clear dikhta hai.",
+                "Haan, hota hai. Spending imbalance aksar daily habits se shuru hota hai, sirf ek badi galti se nahi.",
+            ],
+        },
+        "health": {
+            "en": [
+                "Yes, this does happen. Health imbalance usually shows up through routine breaks before it feels serious.",
+                "Yes, it happens. Stress and recovery rarely shift all at once; they build through daily rhythm first.",
+            ],
+            "hi": [
+                "Haan, aisa hota hai. Health imbalance aksar routine breaks se dikhna shuru hota hai, serious feel baad mein hota hai.",
+                "Haan, hota hai. Stress aur recovery ek saath shift nahi karte, pehle roz ke rhythm mein change dikhta hai.",
+            ],
+        },
+        "marriage": {
+            "en": [
+                "Yes, this does happen. Relationship strain often starts through attention and expectation mismatch before it becomes open conflict.",
+                "Yes, it happens. Small emotional imbalance can quietly grow into repeated friction if it is ignored.",
+            ],
+            "hi": [
+                "Haan, aisa hota hai. Rishton mein tanav aksar dhyan aur expectations ke mismatch se shuru hota hai, phir khula takraav ban sakta hai.",
+                "Haan, hota hai. Chota emotional imbalance ignore ho jaye to dheere dheere baar baar ka tanav ban jata hai.",
+            ],
+        },
+    }
+
+    AFFIRMATION_LINES = {
+        "career": {
+            "en": [
+                "From here, keep your focus on consistency, work discipline, and clearer priorities.",
+                "Now stay steady with your routine and let your progress build through disciplined effort.",
+            ],
+            "hi": [
+                "Ab focus consistency, kaam ke discipline aur saaf priorities par rakhiye.",
+                "Ab routine ko steady rakhiye aur progress ko disciplined effort se build hone dijiye.",
+            ],
+        },
+        "finance": {
+            "en": [
+                "From here, keep your focus on spending control, savings protection, and slower money decisions.",
+                "Now stay steady with your budget and let stability come through regular financial discipline.",
+            ],
+            "hi": [
+                "Ab focus spending control, savings protection aur paise ke decisions thode dheere lene par rakhiye.",
+                "Ab budget ko steady rakhiye aur financial discipline se stability aane dijiye.",
+            ],
+        },
+        "health": {
+            "en": [
+                "From here, keep your focus on routine stability, sleep discipline, and calmer recovery.",
+                "Now stay regular with your routine and let your system settle through consistency.",
+            ],
+            "hi": [
+                "Ab focus routine stability, sleep discipline aur shaant recovery par rakhiye.",
+                "Ab routine ko regular rakhiye aur body ko consistency se settle hone dijiye.",
+            ],
+        },
+        "marriage": {
+            "en": [
+                "From here, keep your focus on calm communication, clear expectations, and softer reactions.",
+                "Now stay steady in the marriage and let clarity build through direct but gentle conversations.",
+            ],
+            "hi": [
+                "Ab focus shaant baat-cheet, saaf expectations aur turant reaction kam karne par rakhiye.",
+                "Ab marriage mein steadiness rakhiye aur seedhi lekin naram baat-cheet se clarity build hone dijiye.",
+            ],
+        },
+    }
+
+    INSTRUCTION_REINFORCEMENT = {
+        "en": [
+            "Start with the first step and keep the rest consistent; that is where the real shift begins.",
+            "Take the steps one by one and keep them regular; that is how the result settles.",
+        ],
+        "hi": [
+            "Sabse pehle pehla step pakdiye aur baaki ko regular rakhiye, wahi se asli badlav shuru hota hai.",
+            "Steps ko ek ek karke regular rakhiye, tabhi result dheere dheere settle hota hai.",
+        ],
+    }
+
     CONTEXT_ADJUSTMENTS = {
         "career": {
             "en": [
@@ -241,28 +384,34 @@ class ConsultationEngine:
             "Understood, this is about your existing marriage. The focus now is reducing friction and building better communication.",
         ],
         "hi": [
-            "Samajh gaya, aap already married hain. Focus ab current marriage ko improve karne par hai, marriage timing par nahi.",
-            "Samajh gaya, yeh aapki existing marriage ke baare mein hai. Focus ab friction kam karne aur better communication banane par hai.",
+            "Samajh gaya, aapki shaadi pehle se ho chuki hai. Focus ab current marriage ko improve karne par hai, marriage timing par nahi.",
+            "Samajh gaya, yeh aapki existing marriage ke baare mein hai. Focus ab tanav kam karne aur better communication banane par hai.",
         ],
     }
 
     FOLLOWUP_TYPE_ORDER = {
+        "affirmation": ["affirmation", "mechanism", "clarification", "instruction"],
         "definition": ["definition", "clarification", "instruction", "timing"],
         "instruction": ["instruction", "clarification", "timing"],
+        "mechanism": ["mechanism", "clarification", "instruction"],
         "clarification": ["clarification", "instruction", "timing"],
         "context_update": ["context_update", "clarification", "instruction", "timing"],
         "timing": ["timing", "clarification", "instruction"],
+        "validation": ["validation", "mechanism", "clarification"],
         "detail": ["clarification", "instruction", "timing"],
         "general": ["clarification", "instruction", "timing"],
     }
 
     NEXT_STAGE_MAP = {
         MODE_ANALYSIS: ANALYSIS,
+        "affirmation": EXPLANATION,
         "definition": EXPLANATION,
+        "mechanism": EXPLANATION,
         "clarification": EXPLANATION,
         "context_update": EXPLANATION,
         "timing": TIMING,
         "instruction": GUIDANCE,
+        "validation": EXPLANATION,
     }
 
     @staticmethod
@@ -277,6 +426,7 @@ class ConsultationEngine:
             "name": None,
             "consult_stage": 1,
             "last_response": "",
+            "last_response_type": "",
             "language": language or "english",
             "mode": ConsultationEngine.MODE_ANALYSIS,
         }
@@ -382,6 +532,7 @@ class ConsultationEngine:
         state["name"] = parsed.get("name") or parsed.get("active_profile_name")
         state["consult_stage"] = ConsultationEngine._stage_from_legacy(parsed)
         state["last_response"] = str(parsed.get("last_response") or "")
+        state["last_response_type"] = str(parsed.get("last_response_type") or "")
         state["language"] = parsed.get("language") or parsed.get("language_mode") or base["language"]
         state["mode"] = ConsultationEngine._mode_from_legacy(parsed)
         return state
@@ -415,6 +566,7 @@ class ConsultationEngine:
         if reset_depth:
             state["consult_stage"] = 1
             state["last_response"] = ""
+            state["last_response_type"] = ""
             state["mode"] = ConsultationEngine.MODE_ANALYSIS
         if flow_state in ConsultationEngine.CONSULT_STAGES.values():
             for number, label in ConsultationEngine.CONSULT_STAGES.items():
@@ -430,6 +582,7 @@ class ConsultationEngine:
             state["language"] = language
             state["consult_stage"] = 1
             state["last_response"] = ""
+            state["last_response_type"] = ""
             state["mode"] = ConsultationEngine.MODE_ANALYSIS
         return ConsultationEngine.dump_state(state)
 
@@ -501,7 +654,16 @@ class ConsultationEngine:
         value = str(intent or "").strip().lower()
         if value == "detail":
             return "clarification"
-        if value in {"definition", "instruction", "clarification", "context_update", "timing"}:
+        if value in {
+            "affirmation",
+            "definition",
+            "instruction",
+            "mechanism",
+            "clarification",
+            "context_update",
+            "timing",
+            "validation",
+        }:
             return value
         return "general"
 
@@ -644,6 +806,23 @@ class ConsultationEngine:
         return "\n".join(steps[:3]).strip()
 
     @staticmethod
+    def _mechanism_response(state, language, variant=0):
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+        return ConsultationEngine._localized(ConsultationEngine.MECHANISM_LINES.get(topic, {}), language, variant=variant)
+
+    @staticmethod
+    def _validation_response(state, language, variant=0):
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+        return ConsultationEngine._localized(ConsultationEngine.VALIDATION_LINES.get(topic, {}), language, variant=variant)
+
+    @staticmethod
+    def _affirmation_response(state, language, variant=0):
+        if str(state.get("last_response_type") or "").strip().lower() == "instruction":
+            return ConsultationEngine._localized(ConsultationEngine.INSTRUCTION_REINFORCEMENT, language, variant=variant)
+        topic = ConsultationEngine._topic_key(state.get("topic"))
+        return ConsultationEngine._localized(ConsultationEngine.AFFIRMATION_LINES.get(topic, {}), language, variant=variant)
+
+    @staticmethod
     def _clarification_response(state, analysis_payload, language, variant=0):
         topic = ConsultationEngine._topic_key(state.get("topic"))
         outcome = ConsultationEngine._localized(ConsultationEngine.OUTCOME_LINES.get(topic, {}), language, variant=variant)
@@ -695,16 +874,22 @@ class ConsultationEngine:
 
     @staticmethod
     def _render_followup(response_type, state, user_text, analysis_payload, language, variant=0):
+        if response_type == "affirmation":
+            return ConsultationEngine._affirmation_response(state, language, variant=variant)
         if response_type == "definition":
             return ConsultationEngine._definition_response(user_text, analysis_payload, language, variant=variant)
         if response_type == "instruction":
             return ConsultationEngine._instruction_response(state, analysis_payload, language, variant=variant)
+        if response_type == "mechanism":
+            return ConsultationEngine._mechanism_response(state, language, variant=variant)
         if response_type == "clarification":
             return ConsultationEngine._clarification_response(state, analysis_payload, language, variant=variant)
         if response_type == "context_update":
             return ConsultationEngine._context_update_response(state, user_text, analysis_payload, language, variant=variant)
         if response_type == "timing":
             return ConsultationEngine._timing_response(analysis_payload, language, variant=variant)
+        if response_type == "validation":
+            return ConsultationEngine._validation_response(state, language, variant=variant)
         return ConsultationEngine._clarification_response(state, analysis_payload, language, variant=variant)
 
     @staticmethod
@@ -764,7 +949,7 @@ class ConsultationEngine:
                 return False
             return ConsultationEngine._has_timeframe_hint(raw)
 
-        if response_type in {"clarification", "context_update"}:
+        if response_type in {"affirmation", "mechanism", "clarification", "context_update", "validation"}:
             if len(lines) > 2:
                 return False
             if ConsultationEngine._contains_planet_reference(raw):
@@ -821,10 +1006,13 @@ class ConsultationEngine:
             return text, response_type
 
         fallback_candidates = [
+            ("affirmation", ConsultationEngine._affirmation_response(state, language, variant=1)),
+            ("mechanism", ConsultationEngine._mechanism_response(state, language, variant=1)),
             ("clarification", ConsultationEngine._clarification_response(state, analysis_payload, language, variant=1)),
             ("context_update", ConsultationEngine._context_update_response(state, user_text, analysis_payload, language, variant=1)),
             ("instruction", ConsultationEngine._instruction_response(state, analysis_payload, language, variant=1)),
             ("timing", ConsultationEngine._timing_response(analysis_payload, language, variant=1)),
+            ("validation", ConsultationEngine._validation_response(state, language, variant=1)),
             ("definition", ConsultationEngine._definition_response(user_text, analysis_payload, language, variant=1)),
         ]
         for response_type, text in fallback_candidates:
@@ -841,7 +1029,7 @@ class ConsultationEngine:
         current_stage = ConsultationEngine._clamp_stage(current_stage)
         if response_type == ConsultationEngine.MODE_ANALYSIS:
             return 2
-        if response_type in {"definition", "clarification", "context_update"}:
+        if response_type in {"affirmation", "definition", "mechanism", "clarification", "context_update", "validation"}:
             return max(current_stage, 2)
         if response_type == "timing":
             return max(current_stage, 3)
@@ -887,6 +1075,7 @@ class ConsultationEngine:
             state["topic"] = detected_domain
             state["consult_stage"] = 1
             state["last_response"] = ""
+            state["last_response_type"] = ""
             state["mode"] = ConsultationEngine.MODE_ANALYSIS
         elif detected_domain and not state.get("topic"):
             state["topic"] = detected_domain
@@ -913,6 +1102,7 @@ class ConsultationEngine:
                 ConsultationEngine.MODE_ANALYSIS,
             )
             state["last_response"] = text
+            state["last_response_type"] = ConsultationEngine.MODE_ANALYSIS
             return {
                 "text": text,
                 "next_stage": ConsultationEngine.NEXT_STAGE_MAP[ConsultationEngine.MODE_ANALYSIS],
@@ -934,6 +1124,7 @@ class ConsultationEngine:
             used_type,
         )
         state["last_response"] = text
+        state["last_response_type"] = used_type
 
         return {
             "text": text,

@@ -1,4 +1,5 @@
 import re
+from difflib import SequenceMatcher
 
 
 class IntentRouter:
@@ -8,6 +9,7 @@ class IntentRouter:
             "keywords": {
                 "career", "job", "work", "promotion", "business", "office",
                 "naukri", "kaam", "interview", "boss", "switch job",
+                "carrer", "carrier", "profession",
             },
             "target_houses": [10, 6, 11],
             "target_planets": ["Saturn", "Sun", "Mercury"],
@@ -16,7 +18,7 @@ class IntentRouter:
             "keywords": {
                 "finance", "money", "wealth", "salary", "income", "investment",
                 "invest", "savings", "spending", "budget", "loan", "debt",
-                "paisa", "dhan", "bachat", "nivesh",
+                "paisa", "paise", "dhan", "bachat", "nivesh",
             },
             "target_houses": [2, 11, 5],
             "target_planets": ["Jupiter", "Venus", "Mars"],
@@ -25,6 +27,7 @@ class IntentRouter:
             "keywords": {
                 "marriage", "married", "shaadi", "partner", "relationship",
                 "wife", "husband", "spouse", "rishta", "wedding",
+                "shadi", "sadhi",
             },
             "target_houses": [7, 2, 11],
             "target_planets": ["Venus", "Jupiter", "Moon"],
@@ -33,6 +36,7 @@ class IntentRouter:
             "keywords": {
                 "health", "stress", "sleep", "diet", "routine", "hospital",
                 "disease", "illness", "sehat", "bimari", "recovery",
+                "helth",
             },
             "target_houses": [1, 6, 8],
             "target_planets": ["Moon", "Saturn", "Mars"],
@@ -40,27 +44,66 @@ class IntentRouter:
     }
 
     INTENT_MAP = {
+        "aisa bhi hota hai": "validation",
+        "aisa v hota hai": "validation",
         "already married": "context_update",
+        "kya karna chahiye": "instruction",
         "what should i do": "instruction",
+        "what can i do": "instruction",
         "how exactly": "clarification",
         "kaise sudhar": "clarification",
         "what kind": "clarification",
+        "aisa hota hai": "validation",
+        "kya karu": "instruction",
+        "kya karun": "instruction",
+        "kiya karu": "instruction",
+        "kiya karun": "instruction",
+        "kis tarah": "mechanism",
+        "kis se": "mechanism",
+        "kissey": "mechanism",
+        "kisse": "mechanism",
         "how long": "timing",
         "what is": "definition",
         "kya hai": "definition",
         "yeh kya": "definition",
         "matlab": "definition",
+        "theek hai": "affirmation",
+        "thik hai": "affirmation",
         "lekin": "context_update",
         "already": "context_update",
         "ho chuka": "context_update",
         "but": "context_update",
+        "sach me": "validation",
         "kaisa": "clarification",
         "kaisey": "instruction",
         "kaise": "instruction",
+        "haan": "affirmation",
+        "okay": "affirmation",
+        "hmm": "affirmation",
         "how": "instruction",
+        "han": "affirmation",
+        "thik": "affirmation",
+        "acha": "affirmation",
+        "achha": "affirmation",
         "kab": "timing",
         "aur": "clarification",
+        "ji": "affirmation",
+        "ok": "affirmation",
         "more": "clarification",
+    }
+
+    FUZZY_MATCH_THRESHOLD = 0.84
+    FUZZY_MIN_LENGTH = 4
+    INTENT_PRIORITY = {
+        "context_update": 0,
+        "instruction": 1,
+        "timing": 1,
+        "mechanism": 1,
+        "clarification": 1,
+        "definition": 1,
+        "validation": 2,
+        "affirmation": 3,
+        "general": 9,
     }
 
     GENERAL_TARGETS = {
@@ -93,6 +136,7 @@ class IntentRouter:
     @staticmethod
     def normalize_intent(text):
         normalized = IntentRouter._normalize_text(text)
+        matches = []
 
         for phrase, intent in sorted(
             IntentRouter.INTENT_MAP.items(),
@@ -100,11 +144,21 @@ class IntentRouter:
             reverse=True,
         ):
             if re.search(rf"\b{re.escape(phrase)}\b", normalized):
-                return {
-                    "intent": intent,
-                    "matched_phrase": phrase,
-                    "normalized_text": normalized,
-                }
+                matches.append((phrase, intent))
+
+        if matches:
+            phrase, intent = min(
+                matches,
+                key=lambda item: (
+                    IntentRouter.INTENT_PRIORITY.get(item[1], 9),
+                    -len(item[0]),
+                ),
+            )
+            return {
+                "intent": intent,
+                "matched_phrase": phrase,
+                "normalized_text": normalized,
+            }
 
         return {
             "intent": "general",
@@ -113,11 +167,28 @@ class IntentRouter:
         }
 
     @staticmethod
+    def _fuzzy_match_token(token, keyword):
+        token_value = str(token or "").strip().lower()
+        keyword_value = str(keyword or "").strip().lower()
+        if len(token_value) < IntentRouter.FUZZY_MIN_LENGTH:
+            return False
+        if len(keyword_value) < IntentRouter.FUZZY_MIN_LENGTH:
+            return False
+        if token_value[0] != keyword_value[0]:
+            return False
+        if abs(len(token_value) - len(keyword_value)) > 2:
+            return False
+        if len(token_value) >= 5 and len(keyword_value) >= 5 and token_value[:2] != keyword_value[:2]:
+            return False
+        return SequenceMatcher(None, token_value, keyword_value).ratio() >= IntentRouter.FUZZY_MATCH_THRESHOLD
+
+    @staticmethod
     def detect_domain(text, current_domain=None):
         normalized = IntentRouter._normalize_text(text)
         if not normalized:
             return current_domain
 
+        tokens = normalized.split()
         best_topic = current_domain
         best_score = 0
 
@@ -126,10 +197,14 @@ class IntentRouter:
 
             if normalized == topic:
                 score += 6
+            elif any(IntentRouter._fuzzy_match_token(token, topic) for token in tokens):
+                score += 4
 
             for keyword in data["keywords"]:
                 if re.search(rf"\b{re.escape(keyword)}\b", normalized):
                     score += max(2, len(keyword.split()) + 1)
+                elif " " not in keyword and any(IntentRouter._fuzzy_match_token(token, keyword) for token in tokens):
+                    score += 1
 
             if score > best_score:
                 best_score = score
