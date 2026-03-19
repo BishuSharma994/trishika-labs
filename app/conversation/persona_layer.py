@@ -1,200 +1,273 @@
+import re
+
+
 class PersonaLayer:
 
+    ASTROLOGER_NAME = "Arjun"
+    BLOCKED_WORDS = ("momentum", "energy", "patterns", "alignment")
+    PLANET_NAMES = ("sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn", "rahu", "ketu")
+    FINANCE_ALLOWED = ("savings", "spending", "income", "investment", "budget", "salary", "loan", "debt")
+    FINANCE_REJECTED = ("relationship", "harmony", "self-care", "self care", "partner", "love")
+
     TOPIC_LABELS = {
-        "career": {"en": "career", "hi_rom": "career", "hi_dev": "करियर"},
-        "finance": {"en": "finance", "hi_rom": "finance", "hi_dev": "वित्त"},
-        "marriage": {"en": "marriage", "hi_rom": "shaadi", "hi_dev": "विवाह"},
-        "health": {"en": "health", "hi_rom": "swasthya", "hi_dev": "स्वास्थ्य"},
-        "general": {"en": "this area", "hi_rom": "is vishay", "hi_dev": "इस विषय"},
+        "career": {"en": "career", "hi": "career"},
+        "finance": {"en": "finance", "hi": "finance"},
+        "health": {"en": "health", "hi": "health"},
+        "marriage": {"en": "marriage", "hi": "shaadi"},
     }
 
-    SUBTOPIC_LABELS = {
-        "job_switch": {"en": "job switch", "hi_rom": "naukri badalna", "hi_dev": "नौकरी बदलना"},
-        "promotion": {"en": "promotion", "hi_rom": "padonnati", "hi_dev": "पदोन्नति"},
-        "business_direction": {"en": "business direction", "hi_rom": "vyavsay disha", "hi_dev": "व्यवसाय दिशा"},
-        "savings": {"en": "savings", "hi_rom": "bachat", "hi_dev": "बचत"},
-        "investment": {"en": "investment", "hi_rom": "nivesh", "hi_dev": "निवेश"},
-        "debt_management": {"en": "debt management", "hi_rom": "karz prabandhan", "hi_dev": "कर्ज प्रबंधन"},
-        "single_path": {"en": "new relationship path", "hi_rom": "naye rishtay ki disha", "hi_dev": "नए रिश्ते की दिशा"},
-        "relationship_stability": {"en": "relationship stability", "hi_rom": "rishtay ki sthirta", "hi_dev": "रिश्ते की स्थिरता"},
-        "married_life": {"en": "married life", "hi_rom": "vivahit jeevan", "hi_dev": "विवाहित जीवन"},
-        "stress": {"en": "stress", "hi_rom": "tanav", "hi_dev": "तनाव"},
-        "lifestyle_balance": {"en": "lifestyle balance", "hi_rom": "jeevanshaili santulan", "hi_dev": "जीवनशैली संतुलन"},
-        "specific_condition": {"en": "specific condition", "hi_rom": "vishesh sthiti", "hi_dev": "विशेष स्थिति"},
-        "general": {"en": "current focus", "hi_rom": "vartaman focus", "hi_dev": "वर्तमान फोकस"},
+    GENDER_LABELS = {
+        "male": {"en": "Male", "hi": "Male"},
+        "female": {"en": "Female", "hi": "Female"},
+        "other": {"en": "Other", "hi": "Other"},
     }
 
     @staticmethod
-    def _is_hi_dev(language, script):
-        return language in {"hindi_devanagari", "hi_dev"} or (language == "hi" and script == "devanagari")
+    def _language_key(language, script="latin"):
+        mode = str(language or "").strip().lower()
+        if mode == "hindi_roman" or str(script or "").strip().lower() == "roman":
+            return "hi"
+        return "en"
 
     @staticmethod
-    def _is_hi_rom(language, script):
-        return language in {"hindi_roman", "hi_rom"} or (language == "hi" and script in {"roman", "latin"})
+    def _text(language, script, english, roman_hindi):
+        return roman_hindi if PersonaLayer._language_key(language, script) == "hi" else english
 
     @staticmethod
-    def _localized(language, script, en, hi_rom, hi_dev):
-        if PersonaLayer._is_hi_dev(language, script):
-            return hi_dev
-        if PersonaLayer._is_hi_rom(language, script):
-            return hi_rom
-        return en
+    def _topic_label(topic, language, script="latin"):
+        key = PersonaLayer._language_key(language, script)
+        labels = PersonaLayer.TOPIC_LABELS.get(str(topic or "").strip().lower(), PersonaLayer.TOPIC_LABELS["career"])
+        return labels.get(key, labels["en"])
 
     @staticmethod
-    def _topic_label(topic, language, script):
-        key = "en"
-        if PersonaLayer._is_hi_dev(language, script):
-            key = "hi_dev"
-        elif PersonaLayer._is_hi_rom(language, script):
-            key = "hi_rom"
-        return PersonaLayer.TOPIC_LABELS.get(topic, PersonaLayer.TOPIC_LABELS["general"]).get(key, topic)
+    def _gender_label(gender, language, script="latin"):
+        key = PersonaLayer._language_key(language, script)
+        labels = PersonaLayer.GENDER_LABELS.get(str(gender or "").strip().lower(), PersonaLayer.GENDER_LABELS["other"])
+        return labels.get(key, labels["en"])
 
     @staticmethod
-    def _subtopic_label(subtopic, language, script):
-        key = "en"
-        if PersonaLayer._is_hi_dev(language, script):
-            key = "hi_dev"
-        elif PersonaLayer._is_hi_rom(language, script):
-            key = "hi_rom"
-        return PersonaLayer.SUBTOPIC_LABELS.get(subtopic, PersonaLayer.SUBTOPIC_LABELS["general"]).get(key, subtopic)
+    def language_prompt():
+        return "Choose your language."
 
     @staticmethod
-    def _format_actions(actions):
-        lines = []
-        for idx, action in enumerate(actions or [], start=1):
-            lines.append(f"{idx}. {action}")
-        return "\n".join(lines)
-
-    @staticmethod
-    def format_guidance(guidance, language="english", script="latin"):
-        data = guidance or {}
-        topic_label = PersonaLayer._topic_label(data.get("topic"), language, script)
-        subtopic_label = PersonaLayer._subtopic_label(data.get("subtopic"), language, script)
-        level = int(data.get("level", 1))
-        planet = str(data.get("planet") or "Moon")
-        house = str(data.get("house") or "")
-        stability = str(data.get("stability") or "moderate")
-        stress_source = str(data.get("stress_source") or "stress cycle")
-        support = str(data.get("supporting_influence") or planet)
-        routine = str(data.get("routine") or "")
-        behavior = str(data.get("behavior") or "")
-        timeframe = str(data.get("timeframe") or "21 day cycle")
-        focus_areas = data.get("focus_areas") or []
-        actions = data.get("actions") or []
-        remedy = str(data.get("remedy") or "")
-
-        focus_line = ", ".join(str(item) for item in focus_areas[:4])
-        action_block = PersonaLayer._format_actions(actions)
-
-        if level <= 1:
-            return PersonaLayer._localized(
-                language,
-                script,
-                (
-                    f"{topic_label.title()} ({subtopic_label}) current stability: {stability}.\n"
-                    f"Stress source: {stress_source}.\n"
-                    f"Supporting influence: {support}.\n\n"
-                    f"Routine: {routine}\n"
-                    f"Behavior: {behavior}\n"
-                    f"Time window: {timeframe}"
-                ),
-                (
-                    f"{topic_label.capitalize()} ({subtopic_label}) ki vartaman sthirta: {stability}.\n"
-                    f"Tanav ka mool: {stress_source}.\n"
-                    f"Sahayak prabhav: {support}.\n\n"
-                    f"Niyamit routine: {routine}\n"
-                    f"Vyavaharik sujhav: {behavior}\n"
-                    f"Samay avadhi: {timeframe}"
-                ),
-                (
-                    f"{topic_label} ({subtopic_label}) की वर्तमान स्थिरता: {stability}।\n"
-                    f"तनाव का स्रोत: {stress_source}।\n"
-                    f"सहायक प्रभाव: {support}।\n\n"
-                    f"नियमित दिनचर्या: {routine}\n"
-                    f"व्यवहारिक सुझाव: {behavior}\n"
-                    f"समय अवधि: {timeframe}"
-                ),
-            )
-
-        if level == 2:
-            return PersonaLayer._localized(
-                language,
-                script,
-                (
-                    f"{topic_label.title()} ({subtopic_label}) explanation:\n"
-                    f"{planet} influence in house {house} is currently {stability}.\n"
-                    f"Primary stress source: {stress_source}; supporting influence: {support}.\n"
-                    f"Focus areas: {focus_line}.\n\n"
-                    f"Routine: {routine}\n"
-                    f"Behavior: {behavior}\n"
-                    f"Time window: {timeframe}"
-                ),
-                (
-                    f"{topic_label.capitalize()} ({subtopic_label}) ka spasht vivaran:\n"
-                    f"{planet} ka prabhav house {house} mein abhi {stability} sthiti dikha raha hai.\n"
-                    f"Mukhya tanav srot: {stress_source}; sahayak prabhav: {support}.\n"
-                    f"Dhyan ke kshetra: {focus_line}.\n\n"
-                    f"Routine: {routine}\n"
-                    f"Vyavaharik anushasan: {behavior}\n"
-                    f"Samay avadhi: {timeframe}"
-                ),
-                (
-                    f"{topic_label} ({subtopic_label}) का स्पष्ट विवरण:\n"
-                    f"{planet} का प्रभाव house {house} में अभी {stability} स्थिति दिखा रहा है।\n"
-                    f"मुख्य तनाव स्रोत: {stress_source}; सहायक प्रभाव: {support}।\n"
-                    f"ध्यान के क्षेत्र: {focus_line}।\n\n"
-                    f"रूटीन: {routine}\n"
-                    f"व्यवहारिक अनुशासन: {behavior}\n"
-                    f"समय अवधि: {timeframe}"
-                ),
-            )
-
-        if level == 3:
-            return PersonaLayer._localized(
-                language,
-                script,
-                (
-                    f"Practical routine for {topic_label} ({subtopic_label}):\n"
-                    f"{action_block}\n\n"
-                    f"Core routine: {routine}\n"
-                    f"Core behavior: {behavior}\n"
-                    f"Execution window: {timeframe}"
-                ),
-                (
-                    f"{topic_label.capitalize()} ({subtopic_label}) ke liye practical routine:\n"
-                    f"{action_block}\n\n"
-                    f"Mukhya routine: {routine}\n"
-                    f"Mukhya vyavahar: {behavior}\n"
-                    f"Anupalan avadhi: {timeframe}"
-                ),
-                (
-                    f"{topic_label} ({subtopic_label}) के लिए प्रायोगिक दिनचर्या:\n"
-                    f"{action_block}\n\n"
-                    f"मुख्य रूटीन: {routine}\n"
-                    f"मुख्य व्यवहार: {behavior}\n"
-                    f"अनुपालन अवधि: {timeframe}"
-                ),
-            )
-
-        return PersonaLayer._localized(
+    def topic_prompt(language, script="latin"):
+        return PersonaLayer._text(
             language,
             script,
-            (
-                f"Remedy plan for {topic_label} ({subtopic_label}):\n"
-                f"{action_block}\n\n"
-                f"Remedy emphasis: {remedy}\n"
-                f"Keep this for {timeframe}."
-            ),
-            (
-                f"{topic_label.capitalize()} ({subtopic_label}) ke liye upay yojana:\n"
-                f"{action_block}\n\n"
-                f"Mukhya upay: {remedy}\n"
-                f"Isse {timeframe} tak lagatar chalaiye."
-            ),
-            (
-                f"{topic_label} ({subtopic_label}) के लिए उपाय योजना:\n"
-                f"{action_block}\n\n"
-                f"मुख्य उपाय: {remedy}\n"
-                f"इसे {timeframe} तक निरंतर रखें।"
-            ),
+            "Choose a topic.",
+            "Ek topic chuniye.",
         )
+
+    @staticmethod
+    def dob_prompt(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Enter your date of birth (DD/MM/YYYY).",
+            "Apni date of birth likhiye (DD/MM/YYYY).",
+        )
+
+    @staticmethod
+    def time_prompt(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Enter your birth time (HH:MM AM/PM).",
+            "Apna birth time likhiye (HH:MM AM/PM).",
+        )
+
+    @staticmethod
+    def place_prompt(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Enter your birth place.",
+            "Apna birth place likhiye.",
+        )
+
+    @staticmethod
+    def gender_prompt(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Select your gender.",
+            "Apna gender chuniye.",
+        )
+
+    @staticmethod
+    def name_prompt(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Enter your name.",
+            "Apna naam likhiye.",
+        )
+
+    @staticmethod
+    def confirmation_prompt(topic, dob, birth_time, place, gender, name, language, script="latin"):
+        topic_label = PersonaLayer._topic_label(topic, language, script).title()
+        gender_label = PersonaLayer._gender_label(gender, language, script)
+        summary = f"Confirm: {topic_label} | {dob} | {birth_time} | {place} | {gender_label} | {name}"
+        question = PersonaLayer._text(
+            language,
+            script,
+            "Is this correct?",
+            "Kya yeh sahi hai?",
+        )
+        return f"{summary}\n{question}"
+
+    @staticmethod
+    def astrologer_intro(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "I am Arjun, your AI astrologer.",
+            "Main Arjun hoon, aapka AI astrologer.",
+        )
+
+    @staticmethod
+    def consult_prompt(topic, language, script="latin"):
+        topic_label = PersonaLayer._topic_label(topic, language, script)
+        return PersonaLayer._text(
+            language,
+            script,
+            f"What do you want to ask about {topic_label}?",
+            f"Aap {topic_label} ke baare mein kya puchna chahte hain?",
+        )
+
+    @staticmethod
+    def invalid_choice(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Please use the available options.",
+            "Kripya diye gaye options use kijiye.",
+        )
+
+    @staticmethod
+    def devanagari_block(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Please use English or Roman Hindi only.",
+            "Sirf English ya Roman Hindi likhiye.",
+        )
+
+    @staticmethod
+    def language_lock(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Please continue in English.",
+            "Roman Hindi mein likhiye.",
+        )
+
+    @staticmethod
+    def restart_prompt(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "Let us restart from topic selection.",
+            "Chaliye topic selection se phir shuru karte hain.",
+        )
+
+    @staticmethod
+    def technical_issue(language, script="latin"):
+        return PersonaLayer._text(
+            language,
+            script,
+            "There is a temporary issue. Please ask again.",
+            "Temporary issue hai. Kripya phir se puchhiye.",
+        )
+
+    @staticmethod
+    def _clean_line(text):
+        value = re.sub(r"\s+", " ", str(text or "").strip())
+        return value.strip()
+
+    @staticmethod
+    def _action_line(actions):
+        parts = []
+        for index, action in enumerate(actions[:3], start=1):
+            cleaned = PersonaLayer._clean_line(action)
+            if cleaned:
+                parts.append(f"{index}. {cleaned}")
+        return " ".join(parts).strip()
+
+    @staticmethod
+    def format_guidance(guidance, language="english", script="latin", intent="general"):
+        data = guidance or {}
+        action_line = PersonaLayer._action_line(data.get("actions") or [])
+        timeframe = PersonaLayer._clean_line(data.get("timeframe"))
+
+        if intent == "instruction" or data.get("instruction_only"):
+            lines = [
+                f"Action: {action_line}",
+                f"Timeframe: {timeframe}",
+            ]
+            return "\n".join(line for line in lines if line.strip())
+
+        observation = PersonaLayer._clean_line(data.get("observation"))
+        cause = PersonaLayer._clean_line(data.get("cause"))
+
+        lines = [
+            f"Observation: {observation}",
+            f"Cause: {cause}",
+            f"Action: {action_line}",
+            f"Timeframe: {timeframe}",
+        ]
+        return "\n".join(line for line in lines if line.strip())
+
+    @staticmethod
+    def validate_response(text, topic=None, intent="general"):
+        raw = str(text or "").strip()
+        lowered = raw.lower()
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+
+        if not raw:
+            return False
+
+        if any(word in lowered for word in PersonaLayer.BLOCKED_WORDS):
+            return False
+
+        if len(lines) > 6:
+            return False
+
+        if intent == "instruction":
+            if len(lines) != 2:
+                return False
+            if not lines[0].startswith("Action:"):
+                return False
+            if not lines[1].startswith("Timeframe:"):
+                return False
+            step_count = len(re.findall(r"\b[1-3]\.", lines[0]))
+            if step_count < 2 or step_count > 3:
+                return False
+        else:
+            if len(lines) != 4:
+                return False
+            if not lines[0].startswith("Observation:"):
+                return False
+            if not lines[1].startswith("Cause:"):
+                return False
+            if not lines[2].startswith("Action:"):
+                return False
+            if not lines[3].startswith("Timeframe:"):
+                return False
+            if not any(planet in lowered for planet in PersonaLayer.PLANET_NAMES):
+                return False
+            step_count = len(re.findall(r"\b[1-3]\.", lines[2]))
+            if step_count < 2 or step_count > 3:
+                return False
+
+        if topic == "finance":
+            if not any(token in lowered for token in PersonaLayer.FINANCE_ALLOWED):
+                return False
+            if any(token in lowered for token in PersonaLayer.FINANCE_REJECTED):
+                return False
+
+        normalized_lines = [re.sub(r"[^a-z0-9\s]", "", line.lower()).strip() for line in lines]
+        if len(normalized_lines) != len(set(normalized_lines)):
+            return False
+
+        return True

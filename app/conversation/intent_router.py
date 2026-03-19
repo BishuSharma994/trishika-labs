@@ -1,50 +1,135 @@
 import re
 
+
 class IntentRouter:
-    """
-    Classifies user queries and maps them to specific astrological triggers.
-    """
-    
-    INTENT_MAP = {
+
+    DOMAIN_MAP = {
         "career": {
-            "keywords": ["job", "career", "promotion", "business", "work", "switch", "boss"],
+            "keywords": {
+                "career", "job", "work", "promotion", "business", "office",
+                "naukri", "kaam", "interview", "boss", "switch job",
+            },
             "target_houses": [10, 6, 11],
-            "target_planets": ["Sun", "Saturn", "Mercury"]
+            "target_planets": ["Saturn", "Sun", "Mercury"],
         },
         "finance": {
-            "keywords": ["money", "finance", "wealth", "loan", "debt", "salary", "paisa", "dhan"],
-            "target_houses": [2, 11, 12],
-            "target_planets": ["Jupiter", "Venus"]
+            "keywords": {
+                "finance", "money", "wealth", "salary", "income", "investment",
+                "invest", "savings", "spending", "budget", "loan", "debt",
+                "paisa", "dhan", "bachat", "nivesh",
+            },
+            "target_houses": [2, 11, 5],
+            "target_planets": ["Jupiter", "Venus", "Mars"],
         },
         "marriage": {
-            "keywords": ["marriage", "wedding", "wife", "husband", "shaadi", "vivah", "partner", "relationship"],
-            "target_houses": [7, 2, 8],
-            "target_planets": ["Venus", "Jupiter"]
+            "keywords": {
+                "marriage", "married", "shaadi", "partner", "relationship",
+                "wife", "husband", "spouse", "rishta", "wedding",
+            },
+            "target_houses": [7, 2, 11],
+            "target_planets": ["Venus", "Jupiter", "Moon"],
         },
         "health": {
-            "keywords": ["health", "disease", "sick", "hospital", "swasthya", "bimari"],
-            "target_houses": [6, 8, 12],
-            "target_planets": ["Sun", "Moon"]
-        }
+            "keywords": {
+                "health", "stress", "sleep", "diet", "routine", "hospital",
+                "disease", "illness", "sehat", "bimari", "recovery",
+            },
+            "target_houses": [1, 6, 8],
+            "target_planets": ["Moon", "Saturn", "Mars"],
+        },
+    }
+
+    INTENT_MAP = {
+        "what should i do": "instruction",
+        "how long": "timing",
+        "kaisey": "instruction",
+        "kaise": "instruction",
+        "how": "instruction",
+        "aur": "detail",
+        "more": "detail",
+    }
+
+    EXTRA_INTENT_KEYWORDS = {
+        "when": "timing",
+        "kab": "timing",
+        "timing": "timing",
+        "remedy": "remedy",
+        "upay": "remedy",
+        "detail": "detail",
+        "explain": "detail",
+    }
+
+    GENERAL_TARGETS = {
+        "target_houses": [1, 5, 9],
+        "target_planets": ["Moon", "Saturn"],
     }
 
     @staticmethod
+    def _normalize_text(text):
+        value = str(text or "").strip().lower()
+        value = re.sub(r"[^a-z0-9\s]", " ", value)
+        return re.sub(r"\s+", " ", value).strip()
+
+    @staticmethod
+    def contains_devanagari(text):
+        return any("\u0900" <= char <= "\u097f" for char in str(text or ""))
+
+    @staticmethod
+    def normalize_intent(text):
+        normalized = IntentRouter._normalize_text(text)
+
+        for phrase, intent in sorted(
+            IntentRouter.INTENT_MAP.items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        ):
+            if re.search(rf"\b{re.escape(phrase)}\b", normalized):
+                return {
+                    "intent": intent,
+                    "normalized_text": normalized,
+                }
+
+        for phrase, intent in IntentRouter.EXTRA_INTENT_KEYWORDS.items():
+            if re.search(rf"\b{re.escape(phrase)}\b", normalized):
+                return {
+                    "intent": intent,
+                    "normalized_text": normalized,
+                }
+
+        return {
+            "intent": "general",
+            "normalized_text": normalized,
+        }
+
+    @staticmethod
     def detect_domain(text, current_domain=None):
-        text_lower = text.lower()
-        
-        # 1. Check strict keywords first
-        for intent, data in IntentRouter.INTENT_MAP.items():
-            for kw in data["keywords"]:
-                if re.search(r'\b' + kw + r'\b', text_lower):
-                    return intent
-                    
-        # 2. If no new intent detected, maintain the active session domain
-        return current_domain or "general"
+        normalized = IntentRouter._normalize_text(text)
+        if not normalized:
+            return current_domain
+
+        best_topic = current_domain
+        best_score = 0
+
+        for topic, data in IntentRouter.DOMAIN_MAP.items():
+            score = 0
+
+            if normalized == topic:
+                score += 6
+
+            for keyword in data["keywords"]:
+                if re.search(rf"\b{re.escape(keyword)}\b", normalized):
+                    score += max(2, len(keyword.split()) + 1)
+
+            if score > best_score:
+                best_score = score
+                best_topic = topic
+
+        return best_topic if best_score > 0 else current_domain
+
+    @staticmethod
+    def normalize_topic(text):
+        return IntentRouter.detect_domain(text, current_domain=None)
 
     @staticmethod
     def get_astrology_targets(intent):
-        """Returns the specific houses and planets needed for this topic."""
-        return IntentRouter.INTENT_MAP.get(intent, {
-            "target_houses": [1, 5, 9], # General fallback (Trikona)
-            "target_planets": ["Moon", "Sun"]
-        })
+        return IntentRouter.DOMAIN_MAP.get(intent, IntentRouter.GENERAL_TARGETS)

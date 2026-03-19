@@ -1,39 +1,203 @@
 import json
+import re
+from datetime import datetime
 
 from app.astro_engine import ParashariEngine
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.intent_router import IntentRouter
 from app.conversation.language_engine import LanguageEngine
 from app.conversation.memory_engine import MemoryEngine
-from app.conversation.planet_translator import PlanetTranslator
+from app.conversation.persona_layer import PersonaLayer
 from app.conversation.state_manager import StateManager
 from app.utils.geo_resolver import resolve_coordinates
 
-TOPIC_KEYBOARDS = {
-    LanguageEngine.ENGLISH: [["Career 💼", "Finance 💰"], ["Health 🏥", "Marriage 💍"], ["Other 🔮"]],
-    LanguageEngine.HINDI_ROMAN: [["Career 💼", "Finance 💰"], ["Health 🏥", "Marriage 💍"], ["Other 🔮"]],
+LANGUAGE_KEYBOARD = [["English", "Roman Hindi"]]
+TOPIC_KEYBOARD = [["Career", "Finance"], ["Health", "Marriage"]]
+GENDER_KEYBOARD = [["Male", "Female", "Other"]]
+CONFIRM_KEYBOARDS = {
+    LanguageEngine.ENGLISH: [["Yes", "No"]],
+    LanguageEngine.HINDI_ROMAN: [["Haan", "Nahi"]],
 }
+STEP_ALIASES = {
+    "initial_topic": "topic",
+    "tob": "time",
+    "question": "consult",
+}
+VALID_STEPS = {"start", "language", "topic", "dob", "time", "place", "gender", "name", "confirm", "consult"}
+CONSULT_SUGGESTIONS = {
+    "career": {
+        LanguageEngine.ENGLISH: [["How long until career improves?"], ["What should I do for work growth?"]],
+        LanguageEngine.HINDI_ROMAN: [["Career kab improve hoga?"], ["Work growth ke liye kya karu?"]],
+    },
+    "finance": {
+        LanguageEngine.ENGLISH: [["How long until savings improve?"], ["What should I do with spending?"]],
+        LanguageEngine.HINDI_ROMAN: [["Savings kab improve hongi?"], ["Spending ke liye kya karu?"]],
+    },
+    "health": {
+        LanguageEngine.ENGLISH: [["How long until health improves?"], ["What should I do for better health?"]],
+        LanguageEngine.HINDI_ROMAN: [["Health kab improve hogi?"], ["Better health ke liye kya karu?"]],
+    },
+    "marriage": {
+        LanguageEngine.ENGLISH: [["How long until marriage improves?"], ["What should I do for marriage clarity?"]],
+        LanguageEngine.HINDI_ROMAN: [["Shaadi kab improve hogi?"], ["Shaadi clarity ke liye kya karu?"]],
+    },
+}
+
 
 class DialogEngine:
 
     @staticmethod
-    def load_chart(user_id, session):
-        # Fallback values agar data missing ho
-        dob   = getattr(session, "dob", "01/01/2000")
-        tob   = getattr(session, "tob", "12:00 PM")
-        place = getattr(session, "place", "New Delhi")
+    def _remove_keyboard():
+        return {"remove_keyboard": True}
 
-        if session.chart_data:
+    @staticmethod
+    def _keyboard(rows):
+        return {
+            "keyboard": rows,
+            "resize_keyboard": True,
+            "one_time_keyboard": True,
+        }
+
+    @staticmethod
+    def _start_flow(user_id):
+        StateManager.update_session(
+            user_id,
+            step="language",
+            dob=None,
+            tob=None,
+            place=None,
+            gender=None,
+            language=None,
+            script="latin",
+            language_mode=None,
+            language_confirmed=False,
+            active_profile_name=None,
+            last_domain=None,
+            chart_data=None,
+            consultation_state_blob=None,
+            persona_introduced=False,
+        )
+        MemoryEngine.clear(user_id)
+        return {
+            "text": PersonaLayer.language_prompt(),
+            "keyboard": DialogEngine._keyboard(LANGUAGE_KEYBOARD),
+        }
+
+    @staticmethod
+    def _current_step(session):
+        raw_step = str(getattr(session, "step", "start") or "start").strip().lower()
+        return STEP_ALIASES.get(raw_step, raw_step)
+
+    @staticmethod
+    def _current_language(session):
+        language = getattr(session, "language_mode", None) or LanguageEngine.ENGLISH
+        script = getattr(session, "script", None) or ("roman" if language == LanguageEngine.HINDI_ROMAN else "latin")
+        return language, script
+
+    @staticmethod
+    def _normalize_language_choice(text):
+        value = re.sub(r"\s+", " ", str(text or "").strip().lower())
+        if value.startswith("english") or value == "en":
+            return LanguageEngine.ENGLISH
+        if value in {"roman hindi", "hindi", "hindi roman", "roman", "hinglish"}:
+            return LanguageEngine.HINDI_ROMAN
+        return None
+
+    @staticmethod
+    def _normalize_gender(text):
+        value = re.sub(r"\s+", " ", str(text or "").strip().lower())
+        if value in {"male", "m"}:
+            return "male"
+        if value in {"female", "f"}:
+            return "female"
+        if value in {"other", "o"}:
+            return "other"
+        return None
+
+    @staticmethod
+    def _normalize_date(text):
+        value = str(text or "").strip()
+        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
+            try:
+                parsed = datetime.strptime(value, fmt)
+                return parsed.strftime("%d/%m/%Y")
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _normalize_time(text):
+        value = str(text or "").strip().upper().replace(".", ":")
+        value = re.sub(r"\s+", " ", value)
+        value = re.sub(r"(?<=\d)(AM|PM)$", r" \1", value)
+
+        for fmt in ("%I:%M %p", "%I %p", "%H:%M"):
+            try:
+                parsed = datetime.strptime(value, fmt)
+                return parsed.strftime("%I:%M %p")
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _normalize_name(text):
+        value = re.sub(r"\s+", " ", str(text or "").strip())
+        if not value:
+            return None
+        if IntentRouter.contains_devanagari(value):
+            return None
+        if not re.fullmatch(r"[A-Za-z][A-Za-z .'-]{0,79}", value):
+            return None
+        return value
+
+    @staticmethod
+    def _affirmative(text):
+        return str(text or "").strip().lower() in {"yes", "haan", "ha", "confirm"}
+
+    @staticmethod
+    def _negative(text):
+        return str(text or "").strip().lower() in {"no", "nahi", "nahin"}
+
+    @staticmethod
+    def _topic_from_session(session):
+        return IntentRouter.normalize_topic(getattr(session, "last_domain", None)) or getattr(session, "last_domain", None)
+
+    @staticmethod
+    def _consultation_blob(session, language):
+        return ConsultationEngine.prime_state(
+            session_state_blob=getattr(session, "consultation_state_blob", None),
+            language=language,
+            topic=DialogEngine._topic_from_session(session),
+            dob=getattr(session, "dob", None),
+            time=getattr(session, "tob", None),
+            place=getattr(session, "place", None),
+            gender=getattr(session, "gender", None),
+            name=getattr(session, "active_profile_name", None),
+        )
+
+    @staticmethod
+    def _consultation_keyboard(topic, language):
+        rows = CONSULT_SUGGESTIONS.get(topic, {}).get(language)
+        if not rows:
+            rows = CONSULT_SUGGESTIONS["career"][LanguageEngine.ENGLISH]
+        return DialogEngine._keyboard(rows)
+
+    @staticmethod
+    def load_chart(user_id, session):
+        dob = getattr(session, "dob", "01/01/2000")
+        tob = getattr(session, "tob", "12:00 PM")
+        place = getattr(session, "place", "Delhi")
+
+        if getattr(session, "chart_data", None):
             try:
                 return json.loads(session.chart_data)
             except Exception:
                 pass
 
-        # Error Handling for Location API Crash (Choti jagah ke liye)
         try:
             lat, lon = resolve_coordinates(place)
         except Exception:
-            lat, lon = 28.6139, 77.2090 # Default Delhi agar gaon/shahar map par na mile
+            lat, lon = 28.6139, 77.2090
 
         try:
             chart = ParashariEngine.generate_chart(dob, tob, lat, lon)
@@ -43,266 +207,263 @@ class DialogEngine:
             return {}
 
     @staticmethod
+    def _language_blocked(lang, text):
+        if IntentRouter.contains_devanagari(text):
+            return True
+        if lang == LanguageEngine.ENGLISH:
+            return LanguageEngine.detect_language(text) == LanguageEngine.HINDI_ROMAN
+        return LanguageEngine.looks_like_english(text)
+
+    @staticmethod
     def process(user_id, text, session=None):
-        MemoryEngine.add_user_message(user_id, text)
+        user_text = str(text or "").strip()
+        MemoryEngine.add_user_message(user_id, user_text)
+
+        if user_text == "/start":
+            return DialogEngine._start_flow(user_id)
+
         session = StateManager.get_or_create_session(user_id)
+        step = DialogEngine._current_step(session)
 
-        lang = getattr(session, "language_mode", LanguageEngine.ENGLISH) or LanguageEngine.ENGLISH
-        script = getattr(session, "script", "latin")
+        if step not in VALID_STEPS or step == "start":
+            return DialogEngine._start_flow(user_id)
 
-        # --------------------------------------------------------------
-        # 1. /start - The Secure Welcome Boot Sequence
-        # --------------------------------------------------------------
-        if text == "/start":
+        lang, script = DialogEngine._current_language(session)
+
+        if step == "language":
+            selected_language = DialogEngine._normalize_language_choice(user_text)
+            if not selected_language:
+                return {
+                    "text": PersonaLayer.invalid_choice(LanguageEngine.ENGLISH),
+                    "keyboard": DialogEngine._keyboard(LANGUAGE_KEYBOARD),
+                }
+
+            selected_script = "roman" if selected_language == LanguageEngine.HINDI_ROMAN else "latin"
             StateManager.update_session(
-                user_id, step="language", language_mode=None, chart_data=None, dob=None, tob=None, place=None, active_profile_name=None, last_domain=None
+                user_id,
+                step="topic",
+                language=selected_language,
+                script=selected_script,
+                language_mode=selected_language,
+                language_confirmed=True,
+            )
+            return {
+                "text": PersonaLayer.topic_prompt(selected_language, selected_script),
+                "keyboard": DialogEngine._keyboard(TOPIC_KEYBOARD),
+            }
+
+        if IntentRouter.contains_devanagari(user_text):
+            return {
+                "text": PersonaLayer.devanagari_block(lang, script),
+                "keyboard": DialogEngine._remove_keyboard() if step != "topic" else DialogEngine._keyboard(TOPIC_KEYBOARD),
+            }
+
+        if step == "topic":
+            topic = IntentRouter.normalize_topic(user_text)
+            if not topic:
+                return {
+                    "text": PersonaLayer.topic_prompt(lang, script),
+                    "keyboard": DialogEngine._keyboard(TOPIC_KEYBOARD),
+                }
+
+            StateManager.update_session(user_id, step="dob", last_domain=topic)
+            return {
+                "text": PersonaLayer.dob_prompt(lang, script),
+                "keyboard": DialogEngine._remove_keyboard(),
+            }
+
+        if step == "dob":
+            dob = DialogEngine._normalize_date(user_text)
+            if not dob:
+                return {
+                    "text": PersonaLayer.dob_prompt(lang, script),
+                    "keyboard": DialogEngine._remove_keyboard(),
+                }
+
+            StateManager.update_session(user_id, step="time", dob=dob)
+            return {
+                "text": PersonaLayer.time_prompt(lang, script),
+                "keyboard": DialogEngine._remove_keyboard(),
+            }
+
+        if step == "time":
+            birth_time = DialogEngine._normalize_time(user_text)
+            if not birth_time:
+                return {
+                    "text": PersonaLayer.time_prompt(lang, script),
+                    "keyboard": DialogEngine._remove_keyboard(),
+                }
+
+            StateManager.update_session(user_id, step="place", tob=birth_time)
+            return {
+                "text": PersonaLayer.place_prompt(lang, script),
+                "keyboard": DialogEngine._remove_keyboard(),
+            }
+
+        if step == "place":
+            place = re.sub(r"\s+", " ", user_text).strip()
+            if not place:
+                return {
+                    "text": PersonaLayer.place_prompt(lang, script),
+                    "keyboard": DialogEngine._remove_keyboard(),
+                }
+
+            StateManager.update_session(user_id, step="gender", place=place)
+            return {
+                "text": PersonaLayer.gender_prompt(lang, script),
+                "keyboard": DialogEngine._keyboard(GENDER_KEYBOARD),
+            }
+
+        if step == "gender":
+            gender = DialogEngine._normalize_gender(user_text)
+            if not gender:
+                return {
+                    "text": PersonaLayer.gender_prompt(lang, script),
+                    "keyboard": DialogEngine._keyboard(GENDER_KEYBOARD),
+                }
+
+            StateManager.update_session(user_id, step="name", gender=gender)
+            return {
+                "text": PersonaLayer.name_prompt(lang, script),
+                "keyboard": DialogEngine._remove_keyboard(),
+            }
+
+        if step == "name":
+            name = DialogEngine._normalize_name(user_text)
+            if not name:
+                return {
+                    "text": PersonaLayer.name_prompt(lang, script),
+                    "keyboard": DialogEngine._remove_keyboard(),
+                }
+
+            topic = DialogEngine._topic_from_session(session)
+            dob = getattr(session, "dob", "")
+            birth_time = getattr(session, "tob", "")
+            place = getattr(session, "place", "")
+            gender = getattr(session, "gender", "")
+
+            StateManager.update_session(user_id, step="confirm", active_profile_name=name)
+
+            return {
+                "text": PersonaLayer.confirmation_prompt(
+                    topic=topic,
+                    dob=dob,
+                    birth_time=birth_time,
+                    place=place,
+                    gender=gender,
+                    name=name,
+                    language=lang,
+                    script=script,
+                ),
+                "keyboard": DialogEngine._keyboard(CONFIRM_KEYBOARDS.get(lang, CONFIRM_KEYBOARDS[LanguageEngine.ENGLISH])),
+            }
+
+        if step == "confirm":
+            if DialogEngine._negative(user_text):
+                StateManager.update_session(
+                    user_id,
+                    step="topic",
+                    dob=None,
+                    tob=None,
+                    place=None,
+                    gender=None,
+                    active_profile_name=None,
+                    chart_data=None,
+                    consultation_state_blob=None,
+                    persona_introduced=False,
+                )
+                return {
+                    "text": PersonaLayer.topic_prompt(lang, script),
+                    "keyboard": DialogEngine._keyboard(TOPIC_KEYBOARD),
+                }
+
+            if not DialogEngine._affirmative(user_text):
+                return {
+                    "text": PersonaLayer.invalid_choice(lang, script),
+                    "keyboard": DialogEngine._keyboard(CONFIRM_KEYBOARDS.get(lang, CONFIRM_KEYBOARDS[LanguageEngine.ENGLISH])),
+                }
+
+            reloaded = StateManager.reload_session(user_id) or session
+            consultation_blob = DialogEngine._consultation_blob(reloaded, lang)
+            StateManager.update_session(
+                user_id,
+                step="consult",
+                consultation_state_blob=consultation_blob,
+                persona_introduced=True,
             )
             MemoryEngine.clear(user_id)
+
+            consult_session = StateManager.reload_session(user_id) or reloaded
+            DialogEngine.load_chart(user_id, consult_session)
+            topic = DialogEngine._topic_from_session(consult_session) or "career"
+            intro = PersonaLayer.astrologer_intro(lang, script)
+            prompt = PersonaLayer.consult_prompt(topic, lang, script)
+            response_text = f"{intro}\n\n{prompt}"
+            MemoryEngine.add_bot_message(user_id, response_text)
             return {
-                "text": "Welcome to Trishivara! ✨\nYou can chat with our expert Astrologers, for accurate guidance, all your chat are completely secure and private.\n\nAap hamare expert Astrologers se chat kar sakte ho, accurate guidance ke liye, aur aapki saari chats bilkul secure aur private hain.\n\nWhich language would you like to chat in?\nAap kis language mein chat karna chahenge?",
-                "keyboard": {
-                    "keyboard": [
-                        ["English - I'd prefer to chat in English"],
-                        ["Hindi - Mujhe Hindi mein baat karni hai"]
-                    ],
-                    "resize_keyboard": True,
-                    "one_time_keyboard": True,
-                },
+                "text": response_text,
+                "keyboard": DialogEngine._consultation_keyboard(topic, lang),
             }
 
-        # --------------------------------------------------------------
-        # 2. LANGUAGE -> INTENT HOOK
-        # --------------------------------------------------------------
-        if session.step == "language":
-            if text.lower().startswith("hindi"):
-                lang_mode = LanguageEngine.HINDI_ROMAN
-                reply_text = "Aap apne jeevan ke kis kshetra ke baare mein jaanna chahte hain? 👇"
-            elif text.lower().startswith("english"):
-                lang_mode = LanguageEngine.ENGLISH
-                reply_text = "What area of your life would you like to know about? 👇"
-            else:
+        if step == "consult":
+            if DialogEngine._language_blocked(lang, user_text):
                 return {
-                    "text": "Please tap a button below / Kripya neeche diye gaye button par tap karein 👇",
-                    "keyboard": {
-                        "keyboard": [["English - I'd prefer to chat in English"], ["Hindi - Mujhe Hindi mein baat karni hai"]],
-                        "resize_keyboard": True
-                    }
+                    "text": PersonaLayer.language_lock(lang, script),
+                    "keyboard": DialogEngine._remove_keyboard(),
                 }
 
-            StateManager.update_session(user_id, step="initial_topic", language_mode=lang_mode)
-            return {
-                "text": reply_text,
-                "keyboard": {
-                    "keyboard": TOPIC_KEYBOARDS.get(lang_mode, TOPIC_KEYBOARDS[LanguageEngine.ENGLISH]),
-                    "resize_keyboard": True,
-                    "one_time_keyboard": True,
-                }
-            }
-
-        # --------------------------------------------------------------
-        # 3. INITIAL TOPIC -> NAME COLLECTION
-        # --------------------------------------------------------------
-        if session.step == "initial_topic":
-            StateManager.update_session(user_id, step="name", last_domain=text) # Yahan domain save ho gaya (e.g. Marriage)
-            
-            if lang == LanguageEngine.HINDI_ROMAN:
-                reply_text = "Aap ko iski jankari denay k liye mujey app ka details chaiye.\n\nKripya apna Naam bataiye 👇"
-            else:
-                reply_text = "To give you accurate guidance about this, I need your birth details.\n\nPlease tell me your Name 👇"
-
-            return {
-                "text": reply_text,
-                "keyboard": {"remove_keyboard": True}
-            }
-
-        # --------------------------------------------------------------
-        # 4. NAME -> GENDER
-        # --------------------------------------------------------------
-        if session.step == "name":
-            StateManager.update_session(user_id, step="gender", active_profile_name=text)
-            reply_text = "Apna Gender chunein 👇" if lang == LanguageEngine.HINDI_ROMAN else "Select your Gender 👇"
-            return {
-                "text": reply_text,
-                "keyboard": {
-                    "keyboard": [["Male 👨", "Female 👩", "Other 🏳️‍⚧️"]],
-                    "resize_keyboard": True,
-                    "one_time_keyboard": True,
-                }
-            }
-
-        # --------------------------------------------------------------
-        # 5. GENDER -> DOB
-        # --------------------------------------------------------------
-        if session.step == "gender":
-            StateManager.update_session(user_id, step="dob")
-            reply_text = "Apni Date of Birth bataiye (Format: DD/MM/YYYY) 👇" if lang == LanguageEngine.HINDI_ROMAN else "Please enter your Date of Birth (Format: DD/MM/YYYY) 👇"
-            return {"text": reply_text, "keyboard": {"remove_keyboard": True}}
-
-        # --------------------------------------------------------------
-        # 6. DOB -> TOB (With 12 PM hint)
-        # --------------------------------------------------------------
-        if session.step == "dob":
-            StateManager.update_session(user_id, step="tob", dob=text)
-            if lang == LanguageEngine.HINDI_ROMAN:
-                reply_text = "Apna Time of Birth bataiye (Format: HH:MM AM/PM).\nAgar exact time nahi pata hai, toh aap 12:00 PM likh sakte hain 👇"
-            else:
-                reply_text = "Please enter your Time of Birth (Format: HH:MM AM/PM).\nIf you don't know the exact time, you can enter 12:00 PM 👇"
-            return {"text": reply_text}
-
-        # --------------------------------------------------------------
-        # 7. TOB -> PLACE
-        # --------------------------------------------------------------
-        if session.step == "tob":
-            StateManager.update_session(user_id, step="place", tob=text)
-            reply_text = "Apna Place of Birth bataiye (City, State) 👇" if lang == LanguageEngine.HINDI_ROMAN else "Please enter your Place of Birth (City, State) 👇"
-            return {"text": reply_text}
-
-        # --------------------------------------------------------------
-        # 8. PLACE -> CHART GENERATION & WELCOME SUMMARY (Dynamic Keyboard)
-        # --------------------------------------------------------------
-        if session.step == "place":
-            StateManager.update_session(user_id, step="question", place=text)
-            session.place = text 
-            session.dob = getattr(session, "dob", "01/01/2000")
-            session.tob = getattr(session, "tob", "12:00 PM")
-            name = getattr(session, "active_profile_name", "User")
-            
-            domain_selected = str(getattr(session, "last_domain", "")).lower()
-            
-            # MEMORY CLEAR: Taaki AI ko purane onboarding messages na dikhe aur context crash na ho
-            MemoryEngine.clear(user_id)
-            
-            chart = DialogEngine.load_chart(user_id, session)
-            
-            # DYNAMIC SUGGESTIONS LOGIC
-            if lang == LanguageEngine.HINDI_ROMAN:
-                if "marriage" in domain_selected or "shaadi" in domain_selected:
-                    suggestions = [["Meri shaadi kab hogi?"], ["Life partner kaisa hoga?"]]
-                elif "career" in domain_selected:
-                    suggestions = [["Aagey opportunities kab milenge?"], ["Job switch ka sahi samay kya hai?"]]
-                elif "finance" in domain_selected:
-                    suggestions = [["Dhan prapti ke yog hain?"], ["Paisa kab bachega?"]]
-                elif "health" in domain_selected:
-                    suggestions = [["Health aagey kaisi rahegi?"], ["Koi health issue toh nahi aayega?"]]
-                else:
-                    suggestions = [["Aane wala samay kaisa rahega?"], ["Mera sabse majboot grah kaun sa hai?"]]
-                
-                reply_text = f"""Kundali ban rahi hai... ⏳
-
-My Details:
-Date of Birth: {session.dob}
-Time of Birth: {session.tob}
-Place of Birth: {session.place}
-
-Namaste {name} ji main Hemant hoon aapka AI astrologer.
-
-Aaj kaise hain aap?
-
-Aaj kis bare mein baat karna chahenge?"""
-
-            else: # ENGLISH
-                if "marriage" in domain_selected or "shaadi" in domain_selected:
-                    suggestions = [["When will I get married?"], ["How will my life partner be?"]]
-                elif "career" in domain_selected:
-                    suggestions = [["When will I get new opportunities?"], ["When is the right time to switch jobs?"]]
-                elif "finance" in domain_selected:
-                    suggestions = [["Are there chances of wealth gain?"], ["How to improve my savings?"]]
-                elif "health" in domain_selected:
-                    suggestions = [["How will my health be?"], ["Are there any health precautions?"]]
-                else:
-                    suggestions = [["How will my upcoming time be?"], ["Which is my strongest planet?"]]
-                
-                reply_text = f"""Generating Kundali... ⏳
-
-My Details:
-Date of Birth: {session.dob}
-Time of Birth: {session.tob}
-Place of Birth: {session.place}
-
-Namaste {name} ji, I am Rohan, your AI astrologer.
-
-How are you today?
-
-What would you like to discuss today?"""
-                
-            return {
-                "text": reply_text,
-                "keyboard": {
-                    "keyboard": suggestions,
-                    "resize_keyboard": True,
-                    "one_time_keyboard": True,
-                }
-            }
-
-        # --------------------------------------------------------------
-        # 9. MAIN CONSULTATION (With Strict Language Lock & Safety Nets)
-        # --------------------------------------------------------------
-        if session.step == "question":
-            
-            # THE STRICT LANGUAGE LOCK INTERCEPTOR
-            is_english = LanguageEngine.looks_like_english(text)
-            detected_lang = LanguageEngine.detect_language(text)
-
-            if lang == LanguageEngine.HINDI_ROMAN and is_english:
-                return {
-                    "text": "Aap ney hindi language choose kiya hai toh aap hindi mey baat kijiye.",
-                    "keyboard": {"remove_keyboard": True}
-                }
-            elif lang == LanguageEngine.ENGLISH and detected_lang == LanguageEngine.HINDI_ROMAN:
-                return {
-                    "text": "You chose English as your language, please chat in English.",
-                    "keyboard": {"remove_keyboard": True}
-                }
-
-            # If language check passes, proceed to LLM
             try:
-                from app.ai import ask_ai
-                from app.conversation.prompt_builder import AstrologerPrompts
-                from app.conversation.planet_translator import PlanetTranslator
-                
-                consultation_state = ConsultationEngine.load_state(getattr(session, "consultation_state_blob", None))
-                active_topic = consultation_state.get("topic") or getattr(session, "last_domain", None)
-                domain = IntentRouter.detect_domain(text, current_domain=active_topic)
-                
+                consultation_blob = DialogEngine._consultation_blob(session, lang)
+                active_topic = DialogEngine._topic_from_session(session)
+                domain = IntentRouter.detect_domain(user_text, current_domain=active_topic) or active_topic
+                domain_switched = bool(domain and active_topic and domain != active_topic)
+
                 chart = DialogEngine.load_chart(user_id, session) or {}
                 score_domain = ConsultationEngine.score_domain(domain or active_topic)
-                
                 domain_data = {}
                 if score_domain:
                     domain_data = dict(chart.get("domain_scores", {}).get(score_domain, {}))
-                
-                if "current_dasha" in chart:
-                    domain_data["current_dasha"] = chart["current_dasha"]
 
-                messages = AstrologerPrompts.build_system_messages(domain_data, lang, script)
+                current_dasha = chart.get("current_dasha", {})
+                if current_dasha:
+                    domain_data["current_dasha"] = current_dasha
 
-                history = MemoryEngine.get_history(user_id)
-                for msg in history:
-                    messages.append(msg)
+                response = ConsultationEngine.generate_response(
+                    domain=domain,
+                    domain_data=domain_data,
+                    language=lang,
+                    script=script,
+                    stage=None,
+                    age=getattr(session, "age", None),
+                    life_stage=getattr(session, "life_stage", None),
+                    user_goal=getattr(session, "user_goal", None),
+                    current_dasha=current_dasha,
+                    transits=chart.get("transit"),
+                    persona_introduced=getattr(session, "persona_introduced", False),
+                    chart=chart,
+                    theme_shown=getattr(session, "theme_shown", False),
+                    user_text=user_text,
+                    session_state_blob=consultation_blob,
+                    domain_switched=domain_switched,
+                    normalized_intent=IntentRouter.normalize_intent(user_text),
+                )
 
-                ai_reply = ask_ai(messages)
-                
-                try:
-                    ai_reply = PlanetTranslator.translate(ai_reply, lang, script)
-                except Exception:
-                    pass
-
-                StateManager.update_session(user_id, last_domain=(domain or active_topic))
-                MemoryEngine.add_bot_message(user_id, ai_reply)
+                StateManager.update_session(
+                    user_id,
+                    step="consult",
+                    last_domain=(domain or active_topic),
+                    consultation_state_blob=response.get("state_blob"),
+                )
+                MemoryEngine.add_bot_message(user_id, response.get("text", ""))
 
                 return {
-                    "text": ai_reply,
-                    "keyboard": {"remove_keyboard": True},
+                    "text": response.get("text", ""),
+                    "keyboard": DialogEngine._remove_keyboard(),
                 }
-                
-            except Exception as e:
-                fallback_msg = "Maaf kijiye, system mein thodi takneeki samasya aa rahi hai. Kripya apna sawal dobara puchen." if lang == LanguageEngine.HINDI_ROMAN else "I apologize, there is a technical glitch. Please ask your question again."
+            except Exception:
                 return {
-                    "text": fallback_msg,
-                    "keyboard": {"remove_keyboard": True}
+                    "text": PersonaLayer.technical_issue(lang, script),
+                    "keyboard": DialogEngine._remove_keyboard(),
                 }
 
-        return {
-            "text": "Type /start to begin.",
-            "keyboard": {"remove_keyboard": True},
-        }
+        return DialogEngine._start_flow(user_id)
