@@ -1,89 +1,40 @@
-import os
 import json
 from collections import deque
-import re
 
 class MemoryEngine:
-    """
-    Persistent memory engine storing user session state and chat history.
-    Stores data in JSON files to survive server restarts.
-    """
-    MAX_HISTORY = 24
-    MEMORY_DIR = "memory/users"
+    _storage = {}  # In-memory storage (dict of deques)
+    MAX_HISTORY = 10  # Keep last 10 messages for context
 
     @classmethod
-    def _ensure_dir(cls):
-        if not os.path.exists(cls.MEMORY_DIR):
-            os.makedirs(cls.MEMORY_DIR)
+    def clear(cls, user_id):
+        """Clear conversation history for a user."""
+        cls._storage[user_id] = deque(maxlen=cls.MAX_HISTORY)
 
     @classmethod
-    def _get_filepath(cls, user_id):
-        cls._ensure_dir()
-        return os.path.join(cls.MEMORY_DIR, f"{user_id}.json")
-
-    @classmethod
-    def _load(cls, user_id):
-        filepath = cls._get_filepath(user_id)
-        if os.path.exists(filepath):
-            with open(filepath, "r", encoding="utf-8") as f:
-                try:
-                    return json.load(f)
-                except json.JSONDecodeError:
-                    pass
-        return {
-            "name": None,
-            "birth_details_saved": False,
-            "topics_discussed": [],
-            "history": []
-        }
-
-    @classmethod
-    def _save(cls, user_id, data):
-        with open(cls._get_filepath(user_id), "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-
-    @staticmethod
-    def get_history(user_id):
-        data = MemoryEngine._load(user_id)
-        return data.get("history", [])
-
-    @staticmethod
-    def add_user_message(user_id, message):
-        data = MemoryEngine._load(user_id)
-        history = data.get("history", [])
-        history.append({"role": "user", "content": message})
+    def add_user_message(cls, user_id, text):
+        """Add a user message to history."""
+        if user_id not in cls._storage:
+            cls._storage[user_id] = deque(maxlen=cls.MAX_HISTORY)
         
-        # Enforce max history
-        if len(history) > MemoryEngine.MAX_HISTORY:
-            history = history[-MemoryEngine.MAX_HISTORY:]
+        cls._storage[user_id].append({
+            "role": "user", 
+            "content": str(text).strip()
+        })
+
+    @classmethod
+    def add_bot_message(cls, user_id, text):
+        """Add a bot response to history."""
+        if user_id not in cls._storage:
+            cls._storage[user_id] = deque(maxlen=cls.MAX_HISTORY)
             
-        data["history"] = history
-        MemoryEngine._save(user_id, data)
+        cls._storage[user_id].append({
+            "role": "assistant", 
+            "content": str(text).strip()
+        })
 
-    @staticmethod
-    def add_bot_message(user_id, message):
-        data = MemoryEngine._load(user_id)
-        history = data.get("history", [])
-        history.append({"role": "assistant", "content": message})
-        
-        if len(history) > MemoryEngine.MAX_HISTORY:
-            history = history[-MemoryEngine.MAX_HISTORY:]
-            
-        data["history"] = history
-        MemoryEngine._save(user_id, data)
-
-    @staticmethod
-    def log_topic(user_id, topic):
-        if not topic: return
-        data = MemoryEngine._load(user_id)
-        topics = data.get("topics_discussed", [])
-        if topic not in topics:
-            topics.append(topic)
-            data["topics_discussed"] = topics
-            MemoryEngine._save(user_id, data)
-
-    @staticmethod
-    def clear(user_id):
-        data = MemoryEngine._load(user_id)
-        data["history"] = []
-        MemoryEngine._save(user_id, data)
+    @classmethod
+    def get_conversation_context(cls, user_id):
+        """Get recent conversation history as a list of dicts."""
+        if user_id not in cls._storage:
+            return []
+        return list(cls._storage[user_id])

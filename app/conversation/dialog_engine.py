@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime
 
+# Assuming these exist in your project
 from app.astro_engine import ParashariEngine
 from app.conversation.consultation_engine import ConsultationEngine
 from app.conversation.intent_router import IntentRouter
@@ -429,6 +430,7 @@ class DialogEngine:
                     domain_data["current_dasha"] = current_dasha
 
                 response = ConsultationEngine.generate_response(
+                    user_id=user_id,  # <--- CRITICAL FIX: Pass user_id for history lookup
                     domain=domain,
                     domain_data=domain_data,
                     language=lang,
@@ -460,7 +462,9 @@ class DialogEngine:
                     "text": response.get("text", ""),
                     "keyboard": DialogEngine._remove_keyboard(),
                 }
-            except Exception:
+            except Exception as e:
+                # Log error
+                print(f"Error in consultation: {e}")
                 return {
                     "text": PersonaLayer.technical_issue(lang, script),
                     "keyboard": DialogEngine._remove_keyboard(),
