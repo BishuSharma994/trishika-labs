@@ -25,12 +25,35 @@ logger = logging.getLogger(__name__)
 
 class ConsultationEngine:
     @staticmethod
+    def load_state(blob):
+        if not blob:
+            return None
+        if isinstance(blob, dict):
+            return blob
+        if isinstance(blob, str):
+            try:
+                state = json.loads(blob)
+            except Exception:
+                return None
+            return state if isinstance(state, dict) else None
+        return None
+
+    @staticmethod
+    def dump_state(state):
+        if state is None:
+            return None
+        if isinstance(state, str):
+            return state
+        return json.dumps(state, ensure_ascii=False)
+
+    @staticmethod
     def prime_state(session_state_blob, language, topic, dob, time, place, gender, name):
         """Initialize the consultation state."""
-        if session_state_blob:
-            return session_state_blob
+        existing_state = ConsultationEngine.load_state(session_state_blob)
+        if existing_state:
+            return ConsultationEngine.dump_state(existing_state)
 
-        return {
+        return ConsultationEngine.dump_state({
             "topic": topic,
             "profile": {
                 "name": name,
@@ -44,7 +67,7 @@ class ConsultationEngine:
                 "language": language,
                 "stage": "initial",
             },
-        }
+        })
 
     @staticmethod
     def score_domain(domain):
@@ -131,12 +154,15 @@ class ConsultationEngine:
         - First response: Uses template (fast & structured).
         - Follow-ups: Uses GPT-4o (smart & contextual).
         """
+        state_blob = ConsultationEngine.dump_state(
+            ConsultationEngine.load_state(session_state_blob) or {}
+        )
         
         # 1. Handle Garbage Input (e.g. "8", "??", "asdf")
         if len(user_text) < 2 and not user_text.isalnum():
              return {
                 "text": "Aap kya jaanna chahte hain? (What would you like to know?)",
-                "state_blob": session_state_blob
+                "state_blob": state_blob
             }
 
         # 2. Check for Follow-up (Conversation History Exists)
@@ -150,7 +176,7 @@ class ConsultationEngine:
         # 3. If Follow-up OR Specific Question -> Use AI
         if is_follow_up or (len(user_text.split()) > 2):
             return ConsultationEngine._generate_ai_response(
-                user_id, user_text, chart, domain, language, script
+                user_id, user_text, chart, domain, language, script, state_blob
             )
 
         # 4. First Response (Template-based)
@@ -184,18 +210,18 @@ class ConsultationEngine:
 
             return {
                 "text": response_text,
-                "state_blob": session_state_blob
+                "state_blob": state_blob
             }
 
         except Exception as e:
             logger.error(f"Template generation failed: {e}")
             # Fallback to AI if template fails
             return ConsultationEngine._generate_ai_response(
-                user_id, user_text, chart, domain, language, script
+                user_id, user_text, chart, domain, language, script, state_blob
             )
 
     @staticmethod
-    def _generate_ai_response(user_id, user_text, chart, domain, language, script):
+    def _generate_ai_response(user_id, user_text, chart, domain, language, script, state_blob):
         """
         Generates a contextual AI response using GPT-4o.
         """
@@ -220,12 +246,12 @@ class ConsultationEngine:
             
             return {
                 "text": ai_reply,
-                "state_blob": {} # specific state not needed for AI flow
+                "state_blob": state_blob
             }
             
         except Exception as e:
             logger.error(f"AI generation failed: {e}")
             return {
                 "text": "Technical glitch. Please ask again.",
-                "state_blob": {}
+                "state_blob": state_blob
             }

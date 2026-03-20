@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from app.database import SessionLocal, Session
 
@@ -6,6 +7,7 @@ class StateManager:
 
     SESSION_FIELDS     = tuple(column.name for column in Session.__table__.columns)
     SESSION_FIELDS_SET = set(SESSION_FIELDS)
+    JSON_TEXT_FIELDS   = {"language_state_blob", "consultation_state_blob", "profiles", "chart_data"}
 
     @staticmethod
     def _snapshot(session):
@@ -31,6 +33,12 @@ class StateManager:
         return StateManager.get_session(user_id)
 
     @staticmethod
+    def _normalize_field_value(key, value):
+        if key not in StateManager.JSON_TEXT_FIELDS or value is None or isinstance(value, str):
+            return value
+        return json.dumps(value, ensure_ascii=False, default=str)
+
+    @staticmethod
     def get_or_create_session(user_id):
         db = SessionLocal()
         try:
@@ -54,7 +62,7 @@ class StateManager:
                 db.add(session)
             for key, value in fields.items():
                 if key in StateManager.SESSION_FIELDS_SET:   # ← FIX: only set valid columns
-                    setattr(session, key, value)
+                    setattr(session, key, StateManager._normalize_field_value(key, value))
             db.commit()
             db.refresh(session)
             return {
