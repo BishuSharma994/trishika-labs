@@ -1,122 +1,231 @@
+import hashlib
 import json
-from app.ai import ask_ai
+import logging
+import random
+from datetime import datetime
+
+# UPDATED IMPORTS: Import data dictionaries directly, NOT the class
+from app.conversation.life_translation_engine import (
+    OUTCOME_LINES,
+    MECHANISM_LINES,
+    ACTION_LIBRARY,
+    PLANET_MAP,
+    CAREER_MAP,
+    FINANCE_MAP,
+    HEALTH_MAP,
+    MARRIAGE_MAP
+)
+from app.conversation.intent_router import IntentRouter
+from app.conversation.language_engine import LanguageEngine
 from app.conversation.memory_engine import MemoryEngine
-from app.conversation.life_translation_engine import LifeTranslationEngine
+from app.conversation.persona_layer import PersonaLayer
+from app.ai import ask_ai  # Uses your existing AI function
+
+logger = logging.getLogger(__name__)
 
 class ConsultationEngine:
-    OUTCOME_LINES = {
-        "career": {"en": ["Here is your career outlook.", "Let's discuss your work path."], "hi": ["Yeh raha aapka career outlook.", "Aaiye aapke kaam ki baat karein."]},
-        "finance": {"en": ["Here is your financial outlook.", "Let's discuss your wealth path."], "hi": ["Yeh raha aapka financial outlook.", "Aaiye aapke dhan ki baat karein."]}
-        # (Add other topics as needed)
-    }
-
     @staticmethod
     def prime_state(session_state_blob, language, topic, dob, time, place, gender, name):
         """Initialize the consultation state."""
+        if session_state_blob:
+            return session_state_blob
+
         return {
-            "language": language,
             "topic": topic,
-            "dob": dob,
-            "tob": time,
-            "place": place,
-            "gender": gender,
-            "name": name,
-            "history": []
+            "profile": {
+                "name": name,
+                "gender": gender,
+                "dob": dob,
+                "tob": time,
+                "place": place,
+            },
+            "history": [],
+            "params": {
+                "language": language,
+                "stage": "initial",
+            },
         }
 
     @staticmethod
     def score_domain(domain):
-        """Map domain strings to internal scoring keys."""
+        """Map user topic to chart domain keys."""
         mapping = {
-            "career": "career_score",
-            "finance": "finance_score",
-            "health": "health_score",
-            "marriage": "marriage_score"
+            "career": "career",
+            "finance": "finance",
+            "health": "health",
+            "marriage": "marriage",
+            "relationship": "marriage",
+            "business": "career",
+            "money": "finance",
         }
-        return mapping.get(domain)
+        return mapping.get(str(domain).lower(), "career")
 
     @staticmethod
-    def _build_system_prompt(language, topic, chart_data, user_profile):
-        """Create the system prompt for the AI astrologer."""
-        lang_instruction = "Respond in Hinglish (Roman Hindi)." if language == "hi" else "Respond in English."
-        
-        return f"""You are Trishivara, an expert Vedic Astrologer.
-{lang_instruction}
-Topic: {topic}
-User Profile: {json.dumps(user_profile)}
-Chart Data: {json.dumps(chart_data)}
-
-Role:
-1. Answer the user's specific question using the provided chart data (dashas, yogas, planetary positions).
-2. Be empathetic but direct. Give actionable advice.
-3. Keep answers concise (under 100 words).
-4. If the user asks a follow-up question, use the conversation history to maintain context.
-5. If the user's question is unclear ("??", "8"), politely ask them to clarify what they want to know about their {topic}.
-6. Do NOT use technical jargon without explaining it simply.
-"""
-
-    @staticmethod
-    def generate_response(user_id, domain, domain_data, language, script, stage, age, life_stage, user_goal, current_dasha, transits, persona_introduced, chart, theme_shown, user_text, session_state_blob, domain_switched, normalized_intent):
+    def _translate_to_life_guidance(domain, planet, house, strength, language):
         """
-        Generate a response. 
+        Local helper to generate guidance using imported dictionaries.
+        Replaces the old LifeTranslationEngine.translate_to_life_guidance call.
+        """
+        # 1. Deterministic hashing for consistent responses
+        hash_input = f"{domain}-{planet}-{house}-{strength}"
+        seed = int(hashlib.sha256(hash_input.encode()).hexdigest(), 16)
+        
+        # 2. Select Outcome
+        outcomes = OUTCOME_LINES.get(domain, {}).get(language, [])
+        outcome = outcomes[seed % len(outcomes)] if outcomes else ""
+        
+        # 3. Select Mechanism
+        mechanisms = MECHANISM_LINES.get(domain, {}).get(language, [])
+        mechanism = mechanisms[seed % len(mechanisms)] if mechanisms else ""
+        
+        # 4. Select Action (3 items)
+        actions_list = ACTION_LIBRARY.get(domain, {}).get(language, [])
+        # Shuffle deterministically
+        random.Random(seed).shuffle(actions_list)
+        actions = actions_list[:3] if actions_list else []
+        
+        # 5. Determine Timeframe based on planet speed
+        timeframes = {
+            "Saturn": "4-6 weeks" if language == "en" else "4-6 hafte",
+            "Jupiter": "2-3 months" if language == "en" else "2-3 mahine",
+            "Mars": "2-3 weeks" if language == "en" else "2-3 hafte",
+            "Sun": "1 month" if language == "en" else "1 mahina",
+            "Venus": "3-4 weeks" if language == "en" else "3-4 hafte",
+            "Mercury": "1-2 weeks" if language == "en" else "1-2 hafte",
+            "Moon": "2-3 days" if language == "en" else "2-3 din",
+            "Rahu": "Unpredictable" if language == "en" else "Anishchit",
+            "Ketu": "Sudden" if language == "en" else "Achanak",
+        }
+        timeframe = timeframes.get(planet, "soon")
+        
+        return {
+            "observation": outcome.replace("{planet}", planet),
+            "cause": mechanism.replace("{planet}", planet),
+            "action": actions,
+            "timeframe": f"{timeframe} {'mein sudhar dikhna shuru hoga' if language == 'hi' else 'to see improvements'}"
+        }
+
+    @staticmethod
+    def generate_response(
+        domain,
+        domain_data,
+        language,
+        script,
+        stage,
+        age,
+        life_stage,
+        user_goal,
+        current_dasha,
+        transits,
+        persona_introduced,
+        chart,
+        theme_shown,
+        user_text,
+        session_state_blob,
+        domain_switched,
+        normalized_intent,
+        user_id=None,  # Added user_id
+    ):
+        """
+        Main response generator.
         - First response: Uses template (fast & structured).
-        - Follow-ups: Uses AI (smart & contextual).
+        - Follow-ups: Uses GPT-4o (smart & contextual).
         """
         
-        # 1. Handle First Response (Template)
-        # If this is the very first interaction (no history) or a domain switch, use the structured template
-        # This ensures the user gets the "Observation / Cause / Action" format initially.
-        history = MemoryEngine.get_conversation_context(user_id)
-        is_first_interaction = len(history) <= 1  # Just the user's "start" or topic selection
-        
-        if is_first_interaction or domain_switched:
-            # Use the existing template logic (simplified here for brevity, assumes LifeTranslationEngine exists)
-            # You can keep your old template logic here if you want the first reply to be deterministic
-            # Or just use AI for everything.
-            
-            # For this fix, let's use the robust template approach for the first message 
-            # so it matches the "Structure" you like, then AI for everything else.
-            
-            # (If you prefer AI for EVERYTHING, just remove this 'if' block)
-            pass 
+        # 1. Handle Garbage Input (e.g. "8", "??", "asdf")
+        if len(user_text) < 2 and not user_text.isalnum():
+             return {
+                "text": "Aap kya jaanna chahte hain? (What would you like to know?)",
+                "state_blob": session_state_blob
+            }
 
-        # 2. Handle Follow-ups (AI)
-        # For any question after the first one ("Promotion?", "When?", "??"), use GPT.
-        
-        user_profile = session_state_blob  # Contains name, dob, etc.
-        chart_context = {
-            "domain_data": domain_data,
-            "current_dasha": current_dasha,
-            "transits": transits,
-            "chart_summary": chart.get("summary", {})
-        }
+        # 2. Check for Follow-up (Conversation History Exists)
+        is_follow_up = False
+        if user_id:
+            history = MemoryEngine.get_context(user_id)
+            # If we have history (System + User + Bot + User...), it's a follow-up
+            if len(history) > 2: 
+                is_follow_up = True
 
-        system_prompt = ConsultationEngine._build_system_prompt(language, domain, chart_context, user_profile)
-        
-        messages = [{"role": "system", "content": system_prompt}]
-        
-        # Add conversation history
-        # Filter out system messages if any, keep user/assistant
-        clean_history = [msg for msg in history if msg.get("role") in ("user", "assistant")]
-        messages.extend(clean_history)
-        
-        # Add the current user message (if not already in history, though MemoryEngine adds it)
-        # MemoryEngine.add_user_message called in dialog_engine.process, so it's in history.
-        
-        # Call AI
+        # 3. If Follow-up OR Specific Question -> Use AI
+        if is_follow_up or (len(user_text.split()) > 2):
+            return ConsultationEngine._generate_ai_response(
+                user_id, user_text, chart, domain, language, script
+            )
+
+        # 4. First Response (Template-based)
+        # Fallback to template if it's the very first interaction or short keyword
         try:
-            ai_response = ask_ai(messages)
-            if not ai_response:
-                return {"text": "Maaf kijiye, main abhi sampark nahi kar pa raha. Kripya punah prayas karein.", "state_blob": session_state_blob}
+            # Extract chart factors
+            planet = domain_data.get("planet", "Saturn")
+            house = domain_data.get("house", 10)
+            strength = domain_data.get("strength", "neutral")
             
+            # Use local helper instead of class method
+            guidance = ConsultationEngine._translate_to_life_guidance(
+                domain, planet, house, strength, language
+            )
+            
+            # Format the template response
+            if language == "hi":
+                response_text = (
+                    f"Observation: {guidance['observation']}\n"
+                    f"Cause: {guidance['cause']}\n"
+                    f"Action: 1. {guidance['action'][0]} 2. {guidance['action'][1]}\n"
+                    f"Timeframe: {guidance['timeframe']}."
+                )
+            else:
+                response_text = (
+                    f"Observation: {guidance['observation']}\n"
+                    f"Cause: {guidance['cause']}\n"
+                    f"Action: 1. {guidance['action'][0]} 2. {guidance['action'][1]}\n"
+                    f"Timeframe: {guidance['timeframe']}."
+                )
+
             return {
-                "text": ai_response,
-                "state_blob": session_state_blob
-            }
-        except Exception as e:
-            print(f"AI Error: {e}")
-            return {
-                "text": "Technical error. Please try again.",
+                "text": response_text,
                 "state_blob": session_state_blob
             }
 
+        except Exception as e:
+            logger.error(f"Template generation failed: {e}")
+            # Fallback to AI if template fails
+            return ConsultationEngine._generate_ai_response(
+                user_id, user_text, chart, domain, language, script
+            )
+
+    @staticmethod
+    def _generate_ai_response(user_id, user_text, chart, domain, language, script):
+        """
+        Generates a contextual AI response using GPT-4o.
+        """
+        try:
+            # 1. Get History
+            history = MemoryEngine.get_context(user_id) if user_id else []
+            
+            # 2. Prepare System Prompt with Chart Data
+            system_prompt = (
+                f"You are Arjun, an expert Vedic Astrologer. Keep answers short (under 60 words). "
+                f"Speak in {language} ({script} script). "
+                f"User is asking about {domain}. "
+                f"Chart Data: {json.dumps(chart, default=str)}. "
+                f"Be empathetic but direct. Give actionable advice."
+            )
+            
+            # 3. Construct Messages for AI
+            messages = [{"role": "system", "content": system_prompt}] + history
+            
+            # 4. Call AI
+            ai_reply = ask_ai(messages)  # Ensure ask_ai returns a string
+            
+            return {
+                "text": ai_reply,
+                "state_blob": {} # specific state not needed for AI flow
+            }
+            
+        except Exception as e:
+            logger.error(f"AI generation failed: {e}")
+            return {
+                "text": "Technical glitch. Please ask again.",
+                "state_blob": {}
+            }
