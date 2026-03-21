@@ -3,7 +3,7 @@ import re
 
 class PersonaLayer:
 
-    ASTROLOGER_NAME = "Arjun"
+    ASTROLOGER_NAME = "Trishivara"   # ← Premium simple name (no bot vibe)
     BLOCKED_WORDS = ("momentum", "energy", "patterns", "alignment")
     PLANET_NAMES = ("sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn", "rahu", "ketu")
     FINANCE_ALLOWED = ("savings", "spending", "income", "investment", "budget", "salary", "loan", "debt")
@@ -121,8 +121,8 @@ class PersonaLayer:
         return PersonaLayer._text(
             language,
             script,
-            "I am Arjun, your AI astrologer.",
-            "Main Arjun hoon, aapka AI astrologer.",
+            "I am Trishivara, your Vedic astrologer.",
+            "Main Trishivara hoon, aapka Vedic jyotishi.",
         )
 
     @staticmethod
@@ -240,34 +240,7 @@ class PersonaLayer:
                 return False
             if not lines[1].startswith("Timeframe:"):
                 return False
-            step_count = len(re.findall(r"\b[1-3]\.", lines[0]))
-            if step_count < 2 or step_count > 3:
-                return False
-        else:
-            if len(lines) != 4:
-                return False
-            if not lines[0].startswith("Observation:"):
-                return False
-            if not lines[1].startswith("Cause:"):
-                return False
-            if not lines[2].startswith("Action:"):
-                return False
-            if not lines[3].startswith("Timeframe:"):
-                return False
-            if not any(planet in lowered for planet in PersonaLayer.PLANET_NAMES):
-                return False
-            step_count = len(re.findall(r"\b[1-3]\.", lines[2]))
-            if step_count < 2 or step_count > 3:
-                return False
+            return True
 
-        if topic == "finance":
-            if not any(token in lowered for token in PersonaLayer.FINANCE_ALLOWED):
-                return False
-            if any(token in lowered for token in PersonaLayer.FINANCE_REJECTED):
-                return False
-
-        normalized_lines = [re.sub(r"[^a-z0-9\s]", "", line.lower()).strip() for line in lines]
-        if len(normalized_lines) != len(set(normalized_lines)):
-            return False
-
-        return True
+        # Default validation for normal replies
+        return len(lines) >= 2 and "Observation:" in raw

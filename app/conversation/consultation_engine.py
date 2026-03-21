@@ -147,7 +147,7 @@ class ConsultationEngine:
         session_state_blob,
         domain_switched,
         normalized_intent,
-        user_id=None,  # Added user_id
+        user_id=None,
     ):
         """
         Main response generator.
@@ -158,18 +158,17 @@ class ConsultationEngine:
             ConsultationEngine.load_state(session_state_blob) or {}
         )
         
-        # 1. Handle Garbage Input (e.g. "8", "??", "asdf")
+        # 1. Handle Garbage Input
         if len(user_text) < 2 and not user_text.isalnum():
              return {
                 "text": "Aap kya jaanna chahte hain? (What would you like to know?)",
                 "state_blob": state_blob
             }
 
-        # 2. Check for Follow-up (Conversation History Exists)
+        # 2. Check for Follow-up
         is_follow_up = False
         if user_id:
             history = MemoryEngine.get_context(user_id)
-            # If we have history (System + User + Bot + User...), it's a follow-up
             if len(history) > 2: 
                 is_follow_up = True
 
@@ -179,20 +178,16 @@ class ConsultationEngine:
                 user_id, user_text, chart, domain, language, script, state_blob
             )
 
-        # 4. First Response (Template-based)
-        # Fallback to template if it's the very first interaction or short keyword
+        # 4. First Response (Template-based) — already perfect
         try:
-            # Extract chart factors
             planet = domain_data.get("planet", "Saturn")
             house = domain_data.get("house", 10)
             strength = domain_data.get("strength", "neutral")
             
-            # Use local helper instead of class method
             guidance = ConsultationEngine._translate_to_life_guidance(
                 domain, planet, house, strength, language
             )
             
-            # Format the template response
             if language == "hi":
                 response_text = (
                     f"Observation: {guidance['observation']}\n"
@@ -215,7 +210,6 @@ class ConsultationEngine:
 
         except Exception as e:
             logger.error(f"Template generation failed: {e}")
-            # Fallback to AI if template fails
             return ConsultationEngine._generate_ai_response(
                 user_id, user_text, chart, domain, language, script, state_blob
             )
@@ -223,35 +217,35 @@ class ConsultationEngine:
     @staticmethod
     def _generate_ai_response(user_id, user_text, chart, domain, language, script, state_blob):
         """
-        Generates a contextual AI response using GPT-4o.
+        Generates a contextual AI response using GPT-4o — NOW STRICTLY ASTROLOGICAL.
         """
         try:
-            # 1. Get History
             history = MemoryEngine.get_context(user_id) if user_id else []
-            
-            # 2. Prepare System Prompt with Chart Data
+
+            # === STRONG ASTROLOGY-ENFORCING PROMPT (this fixes the mentoring issue) ===
             system_prompt = (
-                f"You are Arjun, an expert Vedic Astrologer. Keep answers short (under 60 words). "
-                f"Speak in {language} ({script} script). "
-                f"User is asking about {domain}. "
-                f"Chart Data: {json.dumps(chart, default=str)}. "
-                f"Be empathetic but direct. Give actionable advice."
+                f"You are Trishivara (not Arjun), a strict Vedic astrologer. "
+                f"EVERY single reply MUST reference the actual Chart Data JSON below. "
+                f"Use specific planets, houses, current dasha, transits from the chart. "
+                f"NEVER give generic life coaching, mentoring, career guidance, or motivational advice. "
+                f"Always tie the answer to Vedic principles (e.g., 'Saturn in 10th house is causing delay', "
+                f"'Venus dasha is giving marriage clarity', 'Rahu in 7th is creating confusion'). "
+                f"Keep answers short (under 60 words). Speak only in {language} ({script} script). "
+                f"User query domain: {domain}. "
+                f"Full Chart Data: {json.dumps(chart, default=str, ensure_ascii=False)}"
             )
-            
-            # 3. Construct Messages for AI
+
             messages = [{"role": "system", "content": system_prompt}] + history
-            
-            # 4. Call AI
-            ai_reply = ask_ai(messages)  # Ensure ask_ai returns a string
-            
+            ai_reply = ask_ai(messages)
+
             return {
                 "text": ai_reply,
                 "state_blob": state_blob
             }
-            
+
         except Exception as e:
             logger.error(f"AI generation failed: {e}")
             return {
-                "text": "Technical glitch. Please ask again.",
+                "text": "Kripaya thodi der baad puchhiye, chart analysis mein thodi dikkat hui.",
                 "state_blob": state_blob
             }
