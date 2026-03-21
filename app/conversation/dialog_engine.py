@@ -275,11 +275,18 @@ class DialogEngine:
 
     @staticmethod
     def _language_blocked(lang, text):
+        """Check if language is blocked. 
+        
+        For Hindi Roman sessions: allow both Roman Hindi and English (will respond in Hindi Roman)
+        For English sessions: block Roman Hindi
+        Always block Devanagari (Hindi script)
+        """
         if IntentRouter.contains_devanagari(text):
             return True
         if lang == LanguageEngine.ENGLISH:
             return LanguageEngine.detect_language(text) == LanguageEngine.HINDI_ROMAN
-        return LanguageEngine.looks_like_english(text)
+        # For Hindi Roman sessions: don't block English, just respond in Hindi Roman
+        return False
 
     @staticmethod
     def process(user_id, text, session=None):

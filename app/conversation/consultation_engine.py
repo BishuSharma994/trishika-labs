@@ -526,65 +526,133 @@ class ConsultationEngine:
         }
 
     # =========================================================
-    # FOLLOW-UP RESPONSE (Shorter, continuation style)
+    # FOLLOW-UP RESPONSE (Chart-grounded, context-aware)
     # =========================================================
     
     @staticmethod
     def _generate_followup_response(user_id, user_text, domain, language, chart, state_blob):
         """
         Generate a shorter follow-up response for clarification/elaboration requests.
-        Does not repeat the full reading - just provides continuation.
+        Uses chart data to provide context-specific answers, not generic templates.
         """
-        # Generate elaboration prompts based on domain
-        elaborations = {
-            "finance": {
-                "hi": [
-                    "Finance ke baare mein aur details: Mahadasha ke dauran aapko investitions par focus karna chahiye. Long-term planning madad karegi.",
-                    "Aapke finance indicators strong hain. Regular savings aur careful spending se behtar hoga.",
-                ],
-                "en": [
-                    "More on your finances: During this mahadasha, focus on investments. Long-term planning will help.",
-                    "Your finance indicators are strong. Regular savings and careful spending will improve things.",
-                ]
-            },
-            "career": {
-                "hi": [
-                    "Career ke baare mein: Saturn ki strength good hai. Patience rakhna hoga, results aayenge.",
-                    "Aapka career mansik roop se strong hai. Niche se upar aana fixed goals se hoga.",
-                ],
-                "en": [
-                    "More on career: Saturn's strength is good. Have patience, results will come.",
-                    "Your career is mentally strong. Moving up will happen through fixed goals.",
-                ]
-            },
-            "health": {
-                "hi": [
-                    "Health ke baare mein: Daily routine consistent rakhna zaroori hai. Exercise aur diet balance maintain karein.",
-                    "Aapki health indicators decent hain. Regular checkups aur preventive care helpful hoga.",
-                ],
-                "en": [
-                    "More on health: Keep daily routine consistent. Maintain exercise and diet balance.",
-                    "Your health indicators are decent. Regular checkups and preventive care will help.",
-                ]
-            },
-            "marriage": {
-                "hi": [
-                    "Marriage ke baare mein: Relationship mein communication key hai. Patience aur understanding zaroori hai.",
-                    "Aapke marriage indicators stable hain. Mutual respect aur trust important hai.",
-                ],
-                "en": [
-                    "More on marriage: Communication is key in relationships. Patience and understanding are important.",
-                    "Your marriage indicators are stable. Mutual respect and trust are important.",
-                ]
-            }
-        }
-        
-        import random
+        # Get chart data for domain-specific responses
         domain_key = domain or "finance"
-        options = elaborations.get(domain_key, elaborations["finance"])
-        response_text = random.choice(options.get(language, options["en"]))
+        current_dasha = chart.get("current_dasha", {})
+        md = current_dasha.get("mahadasha", "")
+        ad = current_dasha.get("antardasha", "")
+        domain_scores = chart.get("domain_scores", {})
+        domain_score = domain_scores.get(domain_key, {}).get("score", 50)
         
-        return {"text": response_text, "state_blob": state_blob}
+        # Build chart-grounded response based on actual data
+        if domain_key == "finance":
+            venus = ConsultationEngine._get_planet_name("Venus", language)
+            jupiter = ConsultationEngine._get_planet_name("Jupiter", language)
+            venus_strength = ConsultationEngine._get_planet_strength(chart, "Venus")
+            jupiter_strength = ConsultationEngine._get_planet_strength(chart, "Jupiter")
+            
+            if language == "hi":
+                # Hindi Roman response
+                if md:
+                    response = f"Aapke {md} Mahadasha mein finance par focus raha hai. "
+                else:
+                    response = "Finance ke baare mein detail se batau. "
+                
+                if venus_strength > 200:
+                    response += "Shukra strong hai, iska matlab aapko financial gains mil sakte hain. "
+                if jupiter_strength > 200:
+                    response += "Guru ki blessing se wealth opportunities ban sakti hain. "
+                if domain_score >= 70:
+                    response += "Aapka financial graph strong dikh raha hai."
+                elif domain_score >= 50:
+                    response += "Steady growth dikh raha hai, patience rakhna hoga."
+                else:
+                    response += "Thoda caution zaroori hai, budget management improve karein."
+            else:
+                # English response
+                if md:
+                    response = f"During your {md} Mahadasha, finance has been a focus. "
+                else:
+                    response = "Let me give you more details on your finances. "
+                
+                if venus_strength > 200:
+                    response += "Venus is strong, indicating potential financial gains. "
+                if jupiter_strength > 200:
+                    response += "Jupiter's blessing may bring wealth opportunities. "
+                if domain_score >= 70:
+                    response += "Your financial graph looks strong."
+                elif domain_score >= 50:
+                    response += "Steady growth is indicated, patience is needed."
+                else:
+                    response += "Some caution is advised, improve budget management."
+        elif domain_key == "career":
+            saturn = ConsultationEngine._get_planet_name("Saturn", language)
+            mars = ConsultationEngine._get_planet_name("Mars", language)
+            saturn_strength = ConsultationEngine._get_planet_strength(chart, "Saturn")
+            mars_strength = ConsultationEngine._get_planet_strength(chart, "Mars")
+            
+            if language == "hi":
+                response = "Career ke baare mein: "
+                if saturn_strength > 200:
+                    response += "Shani strong hai, iska matlab career mein discipline aur hard work se results milenge. "
+                if mars_strength > 200:
+                    response += "Mars energy se aap competitive field mein achieve kar sakte hain. "
+                response += "Continue your efforts, results aayenge."
+            else:
+                response = "More on your career: "
+                if saturn_strength > 200:
+                    response += "Saturn is strong, indicating discipline and hard work will pay off. "
+                if mars_strength > 200:
+                    response += "Mars energy shows you can achieve in competitive fields. "
+                response += "Keep up your efforts, results will come."
+        elif domain_key == "health":
+            sun_strength = ConsultationEngine._get_planet_strength(chart, "Sun")
+            moon_strength = ConsultationEngine._get_planet_strength(chart, "Moon")
+            
+            if language == "hi":
+                response = "Health ke baare mein: "
+                if sun_strength > 200:
+                    response += "Surya strong hai, energy levels good hain. "
+                if moon_strength > 200:
+                    response += "Chandra strong hai, emotional balance achi hai. "
+                response += "Regular routine aur balanced diet maintain karein."
+            else:
+                response = "More on your health: "
+                if sun_strength > 200:
+                    response += "Sun is strong, indicating good energy levels. "
+                if moon_strength > 200:
+                    response += "Moon is strong, emotional balance is good. "
+                response += "Maintain regular routine and balanced diet."
+        elif domain_key == "marriage":
+            venus = ConsultationEngine._get_planet_name("Venus", language)
+            venus_strength = ConsultationEngine._get_planet_strength(chart, "Venus")
+            venus_dignity = ConsultationEngine._get_planet_dignity(chart, "Venus")
+            
+            if language == "hi":
+                response = "Relationship ke baare mein: "
+                if venus_dignity in ["own_sign", "exalted"]:
+                    response += "Shukra apne ghar mein hai, iska matlab relationship stable aur sweet hai. "
+                elif venus_strength > 200:
+                    response += "Shukra strong hai, relationship mein positivity hai. "
+                else:
+                    response += "Relationship ke liye thoda patience aur understanding zaroori hai. "
+                response += "Communication aur trust maintain karein."
+            else:
+                response = "More on your relationship: "
+                if venus_dignity in ["own_sign", "exalted"]:
+                    response += "Venus is in own sign, indicating stable and sweet relationship. "
+                elif venus_strength > 200:
+                    response += "Venus is strong, showing positivity in relationships. "
+                else:
+                    response += "Some patience and understanding is needed for relationships. "
+                response += "Maintain communication and trust."
+        else:
+            # Generic fallback
+            if language == "hi":
+                response = "Aapka prashn samjha. Koi aur sawaal hai toh poochhiye."
+            else:
+                response = "I understood your question. Feel free to ask another question."
+        
+        return {"text": response, "state_blob": state_blob}
 
     # =========================================================
     # FINANCE INTERPRETATION
@@ -926,12 +994,44 @@ class ConsultationEngine:
                 interpretation=interpretation
             )
             if polished_response and polished_response.get("text"):
-                return polished_response
+                polished_text = polished_response.get("text", "")
+                # Enforce language at final layer
+                if language == "hi":
+                    # For Hindi Roman sessions, check if response is in correct language
+                    # If it contains too much English, fall back to deterministic
+                    if ConsultationEngine._contains_excessive_english(polished_text):
+                        # Fall back to deterministic response
+                        pass
+                    else:
+                        return polished_response
+                else:
+                    return polished_response
         except Exception as e:
             # If AI polishing fails, fall back to deterministic response
             pass
         
         return {"text": response_text, "state_blob": state_blob}
+    
+    @staticmethod
+    def _contains_excessive_english(text):
+        """Check if text contains excessive English (for Hindi Roman sessions)."""
+        if not text:
+            return True
+        # Simple heuristic: count English words vs Hindi Roman words
+        # If more than 30% English words, consider it excessive
+        words = text.split()
+        if len(words) < 3:
+            return False
+        english_count = 0
+        hindi_indicators = ['aap', 'hai', 'ka', 'ki', 'ke', 'mein', 'se', 'ko', ' Yeh', 'woh', 'aur', 'ya', 'nahi', 'haan', 'ji', 'accha', 'matlab', 'to', 'iske', 'uske']
+        for word in words:
+            word_lower = word.lower()
+            is_hindi = any(indicator in word_lower for indicator in hindi_indicators)
+            if not is_hindi and word.isascii():
+                english_count += 1
+        
+        english_ratio = english_count / len(words)
+        return english_ratio > 0.4  # More than 40% English is excessive
 
     # =========================================================
     # AI RESPONSE (Only for wording, not content)
