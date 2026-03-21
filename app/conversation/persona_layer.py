@@ -1,9 +1,9 @@
 import re
 
-
 class PersonaLayer:
 
-    ASTROLOGER_NAME = "Trishivara"   # ← Premium simple name (no bot vibe)
+    ASTROLOGER_NAME = "Trishivara"   # Premium, clean, no bot feel
+
     BLOCKED_WORDS = ("momentum", "energy", "patterns", "alignment")
     PLANET_NAMES = ("sun", "moon", "mars", "mercury", "jupiter", "venus", "saturn", "rahu", "ketu")
     FINANCE_ALLOWED = ("savings", "spending", "income", "investment", "budget", "salary", "loan", "debt")
@@ -121,7 +121,7 @@ class PersonaLayer:
         return PersonaLayer._text(
             language,
             script,
-            "I am Trishivara, your Vedic astrologer.",
+            "I am Trishivara, your Vedic Jyotishi.",
             "Main Trishivara hoon, aapka Vedic jyotishi.",
         )
 
@@ -242,5 +242,4 @@ class PersonaLayer:
                 return False
             return True
 
-        # Default validation for normal replies
         return len(lines) >= 2 and "Observation:" in raw
