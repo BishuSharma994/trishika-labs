@@ -838,6 +838,24 @@ class ConsultationEngine:
             else:
                 response_text += "\n\nNote: This prediction has low confidence due to limited chart signals. Consult an expert for better guidance."
         
+        # Try to polish the response using AI
+        try:
+            polished_response = ConsultationEngine._generate_ai_polished_response(
+                user_id=user_id,
+                user_text=user_text,
+                chart=chart,
+                domain=score_domain,
+                language=language,
+                script=script,
+                state_blob=state_blob,
+                interpretation=interpretation
+            )
+            if polished_response and polished_response.get("text"):
+                return polished_response
+        except Exception as e:
+            # If AI polishing fails, fall back to deterministic response
+            pass
+        
         return {"text": response_text, "state_blob": state_blob}
 
     # =========================================================
@@ -847,7 +865,7 @@ class ConsultationEngine:
     @staticmethod
     def _generate_ai_polished_response(user_id, user_text, chart, domain, language, script, state_blob, interpretation):
         """
-        Optional: Polish the deterministic output using AI.
+        Polish the deterministic output using AI.
         
         IMPORTANT: AI is only allowed to REWORD the interpretation, NOT to:
         - Add new astrology facts
@@ -858,29 +876,21 @@ class ConsultationEngine:
         The rule engine already decided the content; AI only polishes.
         """
         
-        # This is disabled by default - the deterministic response is used directly
-        # Uncomment below to enable AI polishing (with strict constraints)
+        # Build the system prompt for AI polishing
+        system_prompt = (
+            f"You are a warm, conversational Vedic astrology consultant. "
+            f"Rewrite the following astrological analysis in a natural, conversational tone that sounds like a real person explaining. "
+            f"Use simple language that anyone can understand.\n\n"
+            f"Language: {language}\n"
+            f"User domain: {domain}\n\n"
+            f"FACTS (use exactly these, do not add new information):\n"
+            f"Observation: {interpretation.get('observation', '')}\n"
+            f"Cause: {interpretation.get('cause', '')}\n"
+            f"Timeframe: {interpretation.get('timeframe', '')}\n"
+            f"Risk: {interpretation.get('risk', '')}\n"
+            f"Action: {interpretation.get('action', '')}"
+        )
         
-        # system_prompt = (
-        #     f"You are a Roman Hindi/English translator and polisher. "
-        #     f"You MUST use ONLY the facts provided below. "
-        #     f"DO NOT add any new information. "
-        #     f"DO NOT change the confidence level. "
-        #     f"DO NOT invent timelines or predictions. "
-        #     f"Rewrite the following interpretation in a natural, conversational tone:\n\n"
-        #     f"Language: {language}\n"
-        #     f"User domain: {domain}\n\n"
-        #     f"FACTS (use exactly these):\n"
-        #     f"- Observation: {interpretation.get('observation', '')}\n"
-        #     f"- Cause: {interpretation.get('cause', '')}\n"
-        #     f"- Timeframe: {interpretation.get('timeframe', '')}\n"
-        #     f"- Risk: {interpretation.get('risk', '')}\n"
-        #     f"- Action: {interpretation.get('action', '')}\n"
-        # )
-        
-        # messages = [{"role": "system", "content": system_prompt}]
-        # polished = ask_ai(messages)
-        # return {"text": polished, "state_blob": state_blob}
-        
-        # By default, return the deterministic response directly (no AI)
-        return None
+        messages = [{"role": "system", "content": system_prompt}]
+        polished = ask_ai(messages)
+        return {"text": polished, "state_blob": state_blob}
