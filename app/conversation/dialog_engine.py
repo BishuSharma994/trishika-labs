@@ -159,6 +159,72 @@ class DialogEngine:
     def _negative(text):
         return str(text or "").strip().lower() in {"no", "nahi", "nahin"}
 
+    # Short acknowledgement patterns that should NOT trigger a new full consultation
+    SHORT_ACKNOWLEDGEMENTS = {
+        "en": {"yes", "yeah", "yep", "ok", "okay", "sure", "got it", "thanks", "thx", "nice", "cool", "great", "good"},
+        "hi": {"haan", "ha", "ji", "accha", "achha", "theek hai", "thik hai", "okay", "ok", " sahi", "bas", "nice", "badhiya", "shabash"},
+    }
+    
+    @staticmethod
+    def _is_short_acknowledgement(text, language):
+        """Detect if user input is a short acknowledgement that shouldn't trigger full consultation."""
+        cleaned = str(text or "").strip().lower()
+        # Check exact matches first
+        if cleaned in DialogEngine.SHORT_ACKNOWLEDGEMENTS.get(language, set()):
+            return True
+        # Check if it's a very short response (1-3 characters)
+        if len(cleaned) <= 3:
+            return True
+        return False
+    
+    @staticmethod
+    def _classify_followup(user_text, session, language):
+        """
+        Classify user follow-up message type.
+        Returns: 'acknowledgement', 'clarification', 'elaboration', or 'new_topic'
+        """
+        cleaned = str(user_text or "").strip().lower()
+        last_domain = getattr(session, "last_domain", None)
+        
+        # Short acknowledgements
+        if DialogEngine._is_short_acknowledgement(user_text, language):
+            return "acknowledgement"
+        
+        # Check if it's asking about the same domain
+        if last_domain:
+            detected = IntentRouter.detect_domain(user_text, current_domain=last_domain)
+            if detected == last_domain:
+                # Same domain - could be elaboration request
+                # Check for question words
+                question_patterns = {
+                    "en": ["what", "why", "how", "when", "where", "which", "?"],
+                    "hi": ["kya", "kyun", "kaise", "kab", "kahan", "kitna", "konsa", "?"]
+                }
+                if any(q in cleaned for q in question_patterns.get(language, [])):
+                    return "elaboration"
+                return "clarification"
+        
+        # New topic detected
+        return "new_topic"
+    
+    @staticmethod
+    def _handle_acknowledgement(session, language):
+        """Generate a short acknowledgement response without full consultation."""
+        responses = {
+            "en": [
+                "Ji sure! Kya aap is baare mein aur jaanna chahte hain?",
+                "Aap koi aur sawaal poochh sakte hain.",
+                "Kya aap kisi aur topic pe baat karna chahte hain?"
+            ],
+            "hi": [
+                "Ji haan! Kya aap is baare mein aur jaanna chahte hain?",
+                "Aap koi aur sawaal poochh sakte hain.",
+                "Kya aap kisi aur topic pe baat karna chahte hain?"
+            ]
+        }
+        import random
+        return random.choice(responses.get(language, responses["en"]))
+
     @staticmethod
     def _topic_from_session(session):
         return IntentRouter.normalize_topic(getattr(session, "last_domain", None)) or getattr(session, "last_domain", None)
@@ -414,10 +480,34 @@ class DialogEngine:
                 }
 
             try:
+                # Classify user follow-up type BEFORE processing
+                followup_type = DialogEngine._classify_followup(user_text, session, lang)
+                
+                # Handle short acknowledgements without full consultation
+                if followup_type == "acknowledgement":
+                    ack_response = DialogEngine._handle_acknowledgement(session, lang)
+                    MemoryEngine.add_bot_message(user_id, ack_response)
+                    return {
+                        "text": ack_response,
+                        "keyboard": DialogEngine._remove_keyboard(),
+                    }
+                
+                # For elaboration/clarification, pass the response type to consultation engine
+                response_type = "initial"
+                if followup_type == "elaboration":
+                    response_type = "elaboration"
+                elif followup_type == "clarification":
+                    response_type = "clarification"
+                
                 consultation_blob = DialogEngine._consultation_blob(session, lang)
                 active_topic = DialogEngine._topic_from_session(session)
                 domain = IntentRouter.detect_domain(user_text, current_domain=active_topic) or active_topic
                 domain_switched = bool(domain and active_topic and domain != active_topic)
+                
+                # Check if same domain was already answered - if so, use elaboration mode
+                last_answered_domain = getattr(session, "last_answered_domain", None)
+                if last_answered_domain and domain == last_answered_domain and followup_type in ("clarification", "elaboration"):
+                    response_type = "followup"
 
                 chart = DialogEngine.load_chart(user_id, session) or {}
                 score_domain = ConsultationEngine.score_domain(domain or active_topic)
@@ -430,7 +520,7 @@ class DialogEngine:
                     domain_data["current_dasha"] = current_dasha
 
                 response = ConsultationEngine.generate_response(
-                    user_id=user_id,  # <--- CRITICAL FIX: Pass user_id for history lookup
+                    user_id=user_id,
                     domain=domain,
                     domain_data=domain_data,
                     language=lang,
@@ -448,14 +538,27 @@ class DialogEngine:
                     session_state_blob=consultation_blob,
                     domain_switched=domain_switched,
                     normalized_intent=IntentRouter.normalize_intent(user_text),
+                    response_type=response_type,
                 )
 
-                StateManager.update_session(
-                    user_id,
-                    step="consult",
-                    last_domain=(domain or active_topic),
-                    consultation_state_blob=response.get("state_blob"),
-                )
+                # Track answered domain to prevent repetition
+                current_domain = domain or active_topic
+                if response_type == "initial":
+                    StateManager.update_session(
+                        user_id,
+                        step="consult",
+                        last_domain=current_domain,
+                        last_answered_domain=current_domain,
+                        consultation_state_blob=response.get("state_blob"),
+                    )
+                else:
+                    # For follow-ups, keep the original answered domain
+                    StateManager.update_session(
+                        user_id,
+                        step="consult",
+                        last_domain=current_domain,
+                        consultation_state_blob=response.get("state_blob"),
+                    )
                 MemoryEngine.add_bot_message(user_id, response.get("text", ""))
 
                 return {

@@ -196,6 +196,9 @@ class ConsultationEngine:
     @staticmethod
     def _get_planet_name(planet, language):
         """Get localized planet name."""
+        # Handle Unknown - don't expose to user
+        if planet == "Unknown":
+            return ""  # Return empty string for unknown planets
         if language == "hi":
             return PLANET_NAMES.get(planet, {}).get("hi", planet)
         return PLANET_NAMES.get(planet, {}).get("en", planet)
@@ -523,6 +526,67 @@ class ConsultationEngine:
         }
 
     # =========================================================
+    # FOLLOW-UP RESPONSE (Shorter, continuation style)
+    # =========================================================
+    
+    @staticmethod
+    def _generate_followup_response(user_id, user_text, domain, language, chart, state_blob):
+        """
+        Generate a shorter follow-up response for clarification/elaboration requests.
+        Does not repeat the full reading - just provides continuation.
+        """
+        # Generate elaboration prompts based on domain
+        elaborations = {
+            "finance": {
+                "hi": [
+                    "Finance ke baare mein aur details: Mahadasha ke dauran aapko investitions par focus karna chahiye. Long-term planning madad karegi.",
+                    "Aapke finance indicators strong hain. Regular savings aur careful spending se behtar hoga.",
+                ],
+                "en": [
+                    "More on your finances: During this mahadasha, focus on investments. Long-term planning will help.",
+                    "Your finance indicators are strong. Regular savings and careful spending will improve things.",
+                ]
+            },
+            "career": {
+                "hi": [
+                    "Career ke baare mein: Saturn ki strength good hai. Patience rakhna hoga, results aayenge.",
+                    "Aapka career mansik roop se strong hai. Niche se upar aana fixed goals se hoga.",
+                ],
+                "en": [
+                    "More on career: Saturn's strength is good. Have patience, results will come.",
+                    "Your career is mentally strong. Moving up will happen through fixed goals.",
+                ]
+            },
+            "health": {
+                "hi": [
+                    "Health ke baare mein: Daily routine consistent rakhna zaroori hai. Exercise aur diet balance maintain karein.",
+                    "Aapki health indicators decent hain. Regular checkups aur preventive care helpful hoga.",
+                ],
+                "en": [
+                    "More on health: Keep daily routine consistent. Maintain exercise and diet balance.",
+                    "Your health indicators are decent. Regular checkups and preventive care will help.",
+                ]
+            },
+            "marriage": {
+                "hi": [
+                    "Marriage ke baare mein: Relationship mein communication key hai. Patience aur understanding zaroori hai.",
+                    "Aapke marriage indicators stable hain. Mutual respect aur trust important hai.",
+                ],
+                "en": [
+                    "More on marriage: Communication is key in relationships. Patience and understanding are important.",
+                    "Your marriage indicators are stable. Mutual respect and trust are important.",
+                ]
+            }
+        }
+        
+        import random
+        domain_key = domain or "finance"
+        options = elaborations.get(domain_key, elaborations["finance"])
+        response_text = random.choice(options.get(language, options["en"]))
+        
+        return {"text": response_text, "state_blob": state_blob}
+
+    # =========================================================
     # FINANCE INTERPRETATION
     # =========================================================
     
@@ -548,10 +612,11 @@ class ConsultationEngine:
         
         observations = []
         
-        # Dasha analysis - always include current mahadasha
+        # Dasha analysis - only include if we have valid mahadasha
         md_name = ConsultationEngine._get_planet_name(md, language)
-        observations.append(f"{md_name} Mahadasha chal raha hai - financial situation is affected." if language == "hi"
-                          else f"{md_name} Mahadasha is active - financial situation is affected.")
+        if md_name:  # Only add if we have a valid mahadasha name
+            observations.append(f"{md_name} Mahadasha chal raha hai - financial situation is affected." if language == "hi"
+                              else f"{md_name} Mahadasha is active - financial situation is affected.")
         
         # Finance house analysis (2nd and 11th)
         if score >= 70:
@@ -764,7 +829,7 @@ class ConsultationEngine:
         domain, domain_data, language, script, stage, age, life_stage,
         user_goal, current_dasha, transits, persona_introduced, chart,
         theme_shown, user_text, session_state_blob, domain_switched,
-        normalized_intent, user_id=None,
+        normalized_intent, user_id=None, response_type="initial",
     ):
         """
         Generate deterministic chart-driven response.
@@ -773,15 +838,30 @@ class ConsultationEngine:
         1. Calculates confidence based on signal alignment
         2. Generates rule-based interpretation from chart facts
         3. Only uses AI for polishing the wording (not for deciding content)
+        
+        response_type: "initial", "followup", "elaboration", "clarification"
+        - initial: Full consultation answer
+        - followup/clarification/elaboration: Shorter continuation response
         """
         
         state_blob = ConsultationEngine.dump_state(
             ConsultationEngine.load_state(session_state_blob) or {}
         )
         
+        # For follow-up responses, generate shorter continuation
+        if response_type in ("followup", "elaboration", "clarification"):
+            return ConsultationEngine._generate_followup_response(
+                user_id=user_id,
+                user_text=user_text,
+                domain=domain,
+                language=language,
+                chart=chart,
+                state_blob=state_blob,
+            )
+        
         if len(user_text) < 2 and not user_text.isalnum():
             return {
-                "text": "Aap kya jaanna chahte hain?",
+                "text": "Aap kya jaanna chahte hain?" if language == "hi" else "What would you like to know?",
                 "state_blob": state_blob
             }
         
@@ -812,18 +892,18 @@ class ConsultationEngine:
             # Fallback
             interpretation = ConsultationEngine._interpret_career(chart, full_domain_data, language)
         
-        # Add confidence to response
+        # Add confidence to response (internal only, not exposed to user)
         conf_text = ""
         if confidence == "high":
-            conf_text = "[HIGH CONFIDENCE] " if language == "en" else "[UCHA VISHVAS]"
+            conf_text = "[HIGH CONFIDENCE] " if language == "en" else "[UCHA VISHVAS] "
         elif confidence == "medium":
-            conf_text = "[MEDIUM CONFIDENCE] " if language == "en" else "[MADHYAM VISHVAS]"
+            conf_text = "[MEDIUM CONFIDENCE] " if language == "en" else "[MADHYAM VISHVAS] "
         else:
-            conf_text = "[LOW CONFIDENCE - chart signals limited] " if language == "en" else "[NIMN VISHVAS - chart signals limited]"
+            # For low confidence, do NOT expose to user - provide best available answer
+            conf_text = ""
         
-        # Format final response
+        # Format final response (clean format without confidence labels exposed to user)
         response_text = (
-            f"{conf_text}"
             f"Observation: {interpretation['observation']}\n"
             f"Cause: {interpretation['cause']}\n"
             f"Timeframe: {interpretation['timeframe']}\n"
@@ -831,12 +911,7 @@ class ConsultationEngine:
             f"Action: {interpretation['action']}"
         )
         
-        # If confidence is low, add disclaimer
-        if confidence == "low":
-            if language == "hi":
-                response_text += "\n\nNote: Is prediction mein confidence low hai kyunki limited chart signals hain. Consult expert se better guidance lein."
-            else:
-                response_text += "\n\nNote: This prediction has low confidence due to limited chart signals. Consult an expert for better guidance."
+        # NO low-confidence disclaimer - bot provides best available answer internally
         
         # Try to polish the response using AI
         try:
@@ -872,16 +947,31 @@ class ConsultationEngine:
         - Change confidence
         - Invent planets/houses/dasha
         - Make up timelines
+        - Suggest consulting external experts
+        - Mention confidence levels to users
         
         The rule engine already decided the content; AI only polishes.
         """
+        
+        # Determine output language requirement
+        if language == "hi":
+            lang_requirement = "You MUST write in Roman Hindi (Latin script, NOT Devanagari). Example: 'Aapka mahadasha chal raha hai'"
+            lang_examples = "Roman Hindi examples: 'Shukra strong hai', '2-3 mahino mein behtar hoga'"
+        else:
+            lang_requirement = "You MUST write in English."
+            lang_examples = "English examples: 'Your Venus is strong', 'Things will improve in 2-3 months'"
         
         # Build the system prompt for AI polishing
         system_prompt = (
             f"You are a warm, conversational Vedic astrology consultant. "
             f"Rewrite the following astrological analysis in a natural, conversational tone that sounds like a real person explaining. "
             f"Use simple language that anyone can understand.\n\n"
-            f"Language: {language}\n"
+            f"CRITICAL LANGUAGE RULE: {lang_requirement}\n"
+            f"{lang_examples}\n"
+            f"DO NOT mix languages. Output must be entirely in {language}.\n\n"
+            f"CRITICAL: Never suggest the user consult another astrologer or expert. "
+            f"Never mention that chart data is limited or confidence is low. "
+            f"The bot provides the best reading possible.\n\n"
             f"User domain: {domain}\n\n"
             f"FACTS (use exactly these, do not add new information):\n"
             f"Observation: {interpretation.get('observation', '')}\n"
