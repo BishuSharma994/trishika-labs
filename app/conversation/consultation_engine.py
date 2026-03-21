@@ -109,7 +109,29 @@ class ConsultationEngine:
                 "language": language,
                 "stage": "initial",
             },
+            # Extended state tracking
+            "current_domain": None,
+            "answered_domains": [],
+            "last_user_intent": None,
+            "last_response_type": None,
+            "last_answer_summary": None,
+            "last_question_hash": None,
         })
+    
+    @staticmethod
+    def _update_state(state_blob, updates):
+        """Update state with new values and return updated state blob."""
+        state = ConsultationEngine.load_state(state_blob) or {}
+        for key, value in updates.items():
+            state[key] = value
+        return ConsultationEngine.dump_state(state)
+    
+    @staticmethod
+    def _generate_answer_summary(interpretation, domain, response_type):
+        """Generate a short summary of the answer for state tracking."""
+        obs = interpretation.get('observation', '')[:100] if interpretation else ''
+        action = interpretation.get('action', '')[:50] if interpretation else ''
+        return f"{domain}: {obs} | {action}"
 
     @staticmethod
     def score_domain(domain):
@@ -981,6 +1003,9 @@ class ConsultationEngine:
         
         # NO low-confidence disclaimer - bot provides best available answer internally
         
+        # Generate answer summary for state tracking
+        answer_summary = ConsultationEngine._generate_answer_summary(interpretation, score_domain, response_type)
+        
         # Try to polish the response using AI
         try:
             polished_response = ConsultationEngine._generate_ai_polished_response(
@@ -1003,14 +1028,57 @@ class ConsultationEngine:
                         # Fall back to deterministic response
                         pass
                     else:
-                        return polished_response
+                        # Update state before returning
+                        updated_state = ConsultationEngine._update_state(state_blob, {
+                            "current_domain": score_domain,
+                            "last_user_intent": normalized_intent,
+                            "last_response_type": response_type,
+                            "last_answer_summary": answer_summary,
+                            "last_question_hash": str(hash(user_text)),
+                        })
+                        if score_domain not in (state_blob or {}).get("answered_domains", []):
+                            answered = list(state_blob.get("answered_domains", [])) if state_blob else []
+                            answered.append(score_domain)
+                            updated_state = ConsultationEngine._update_state(updated_state, {
+                                "answered_domains": answered
+                            })
+                        return {"text": polished_text, "state_blob": updated_state}
                 else:
-                    return polished_response
+                    # Update state before returning
+                    updated_state = ConsultationEngine._update_state(state_blob, {
+                        "current_domain": score_domain,
+                        "last_user_intent": normalized_intent,
+                        "last_response_type": response_type,
+                        "last_answer_summary": answer_summary,
+                        "last_question_hash": str(hash(user_text)),
+                    })
+                    if score_domain not in (state_blob or {}).get("answered_domains", []):
+                        answered = list(state_blob.get("answered_domains", [])) if state_blob else []
+                        answered.append(score_domain)
+                        updated_state = ConsultationEngine._update_state(updated_state, {
+                            "answered_domains": answered
+                        })
+                    return {"text": polished_text, "state_blob": updated_state}
         except Exception as e:
             # If AI polishing fails, fall back to deterministic response
             pass
         
-        return {"text": response_text, "state_blob": state_blob}
+        # Update state for deterministic response
+        updated_state = ConsultationEngine._update_state(state_blob, {
+            "current_domain": score_domain,
+            "last_user_intent": normalized_intent,
+            "last_response_type": response_type,
+            "last_answer_summary": answer_summary,
+            "last_question_hash": str(hash(user_text)),
+        })
+        if score_domain not in (state_blob or {}).get("answered_domains", []):
+            answered = list(state_blob.get("answered_domains", [])) if state_blob else []
+            answered.append(score_domain)
+            updated_state = ConsultationEngine._update_state(updated_state, {
+                "answered_domains": answered
+            })
+        
+        return {"text": response_text, "state_blob": updated_state}
     
     @staticmethod
     def _contains_excessive_english(text):

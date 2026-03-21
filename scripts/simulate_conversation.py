@@ -275,6 +275,219 @@ def _mock_chart():
 DialogEngine.load_chart = staticmethod(lambda *_args, **_kwargs: _mock_chart())
 
 
+# =========================================================
+# REGRESSION TESTS - State Management & Language Enforcement
+# =========================================================
+
+REGRESSION_TESTS = [
+    {
+        "name": "Hindi Roman Input → Roman Hindi Output",
+        "description": "Verify Hindi sessions respond in Roman Hindi, not English",
+        "language": "hi",
+        "messages": [
+            "Roman Hindi",  # Select Roman Hindi
+            "15/08/1990",  # DOB
+            "10:00 AM",     # Time
+            "Delhi",        # Place
+            "Male",         # Gender
+            "Test User",    # Name
+            "Yes",          # Confirm
+            "Spending ke liye kya karu?",  # Finance question in Hindi Roman
+        ],
+        "checks": [
+            {
+                "user": "Spending ke liye kya karu?",
+                "must_include": ["aap", "hai", "ke"],  # Hindi Roman indicators
+                "must_not_include": ["consult an expert", "low confidence", "limited chart"],
+            }
+        ]
+    },
+    {
+        "name": "Acknowledgement Does Not Restart Reading",
+        "description": "Verify 'Haan' after answer does not trigger new full reading",
+        "language": "hi",
+        "messages": [
+            "Roman Hindi",
+            "15/08/1990",
+            "10:00 AM",
+            "Delhi",
+            "Male",
+            "Test User",
+            "Yes",
+            "Mera career kaisa hai?",  # Career question
+            "Haan",  # Acknowledgement - should NOT trigger full reading
+        ],
+        "checks": [
+            {
+                "user": "Haan",
+                "must_not_include": ["Observation:", "Cause:", "Timeframe:"],  # Full reading format
+            }
+        ]
+    },
+    {
+        "name": "Follow-up Expands Not Repeats",
+        "description": "Follow-up question should expand on previous answer, not repeat it",
+        "language": "hi",
+        "messages": [
+            "Roman Hindi",
+            "15/08/1990",
+            "10:00 AM",
+            "Delhi",
+            "Male",
+            "Test User",
+            "Yes",
+            "Finance ke baare mein batao",  # Finance question
+            "accha kitna accha?",  # Follow-up - should expand, not repeat
+        ],
+        "checks": [
+            {
+                "user": "Finance ke baare mein batao",
+                "must_include": ["finance", "dhana"],  # Should have finance content
+            },
+            {
+                "user": "accha kitna accha?",
+                "must_not_include": ["Observation:", "Cause:"],  # Should NOT repeat full format
+            }
+        ]
+    },
+    {
+        "name": "No Forbidden Phrases in Output",
+        "description": "Verify no external consultation advice is given",
+        "language": "hi",
+        "messages": [
+            "Roman Hindi",
+            "15/08/1990",
+            "10:00 AM",
+            "Delhi",
+            "Male",
+            "Test User",
+            "Yes",
+            "Mera health kaisa hai?",
+        ],
+        "checks": [
+            {
+                "user": "Mera health kaisa hai?",
+                "must_not_include": [
+                    "consult another astrologer",
+                    "consult an expert",
+                    "seek professional help",
+                    "low confidence",
+                    "limited chart signals",
+                    "insufficient data"
+                ],
+            }
+        ]
+    },
+    {
+        "name": "English Session Stays English",
+        "description": "Verify English sessions respond in English",
+        "language": "en",
+        "messages": [
+            "English",
+            "15/08/1990",
+            "10:00 AM",
+            "Delhi",
+            "Male",
+            "Test User",
+            "Yes",
+            "How is my career?",
+        ],
+        "checks": [
+            {
+                "user": "How is my career?",
+                "must_include": ["career", "Saturn"],  # English content
+                "must_not_include": ["consult an expert", "aap", "kaun"],  # No Hindi
+            }
+        ]
+    },
+]
+
+
+def _run_regression_test(test):
+    """Run a regression test and return pass/fail."""
+    user_id = f"reg-{uuid4()}"
+    
+    # Set up session with correct language
+    lang = test.get("language", "hi")
+    
+    transcript = []
+    for message in test["messages"]:
+        response = DialogEngine.process(user_id, message)
+        bot_text = response.get("text", "") if isinstance(response, dict) else str(response)
+        transcript.append({"user": message, "bot": bot_text})
+    
+    # Run checks
+    passed = True
+    issues = []
+    
+    for check in test.get("checks", []):
+        user_msg = check.get("user")
+        row = next((item for item in transcript if item.get("user") == user_msg), None)
+        
+        if not row:
+            passed = False
+            issues.append(f"missing_message:{user_msg}")
+            continue
+        
+        reply = row["bot"]
+        
+        # Check must_include
+        for must_include in check.get("must_include", []):
+            if must_include.lower() not in reply.lower():
+                passed = False
+                issues.append(f"missing:{user_msg}->{must_include}")
+        
+        # Check must_not_include
+        for must_not_include in check.get("must_not_include", []):
+            if must_not_include.lower() in reply.lower():
+                passed = False
+                issues.append(f"forbidden:{user_msg}->{must_not_include}")
+    
+    return transcript, passed, issues
+
+
+def _run_regression_tests():
+    """Run all regression tests."""
+    print("\n" + "=" * 60)
+    print("REGRESSION TESTS - State & Language Enforcement")
+    print("=" * 60)
+    print("\nThese tests verify:")
+    print("1. Hindi Roman input produces Roman Hindi output")
+    print("2. Acknowledgements don't restart full reading")
+    print("3. Follow-ups expand, not repeat")
+    print("4. No forbidden phrases in output")
+    print("5. Language consistency throughout session")
+    print()
+    
+    results = []
+    
+    for test in REGRESSION_TESTS:
+        transcript, passed, issues = _run_regression_test(test)
+        results.append((test["name"], passed, issues))
+        
+        status = "✓ PASS" if passed else "✗ FAIL"
+        print(f"\n{status}: {test['name']}")
+        print(f"  {test.get('description', '')}")
+        
+        if not passed:
+            print(f"  ISSUES: {', '.join(issues)}")
+        
+        # Show transcript
+        for item in transcript[-2:]:  # Show last 2 messages
+            print(f"    USER: {item['user'][:50]}...")
+            print(f"    BOT:  {item['bot'][:80]}...")
+    
+    # Summary
+    passed_count = sum(1 for _, p, _ in results if p)
+    total_count = len(results)
+    
+    print("\n" + "=" * 60)
+    print(f"REGRESSION SUMMARY: {passed_count}/{total_count} passed")
+    print("=" * 60)
+    
+    return passed_count == total_count
+
+
 SCENARIOS = [
     {
         "name": "Career - Deterministic Chart-Based Response",
@@ -517,6 +730,13 @@ def main():
         print("\n⚠ PARTIAL: Some issues detected, review above")
     else:
         print("\n✗ FAIL: System has significant issues")
+    
+    # Run regression tests
+    regression_passed = _run_regression_tests()
+    
+    # Final exit code
+    if not regression_passed:
+        print("\n⚠ WARNING: Some regression tests failed")
 
     print("\n" + "=" * 60)
 
